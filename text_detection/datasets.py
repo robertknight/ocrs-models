@@ -67,7 +67,7 @@ class DDI100(Dataset):
         img_fname = self._img_filenames[idx]
         img_basename, _ = os.path.splitext(img_fname)
         img_path = f"{self._img_dir}/{self._img_filenames[idx]}"
-        img = read_image(img_path)
+        img = read_image(img_path).float() / 255.0
 
         # See https://github.com/machine-intelligence-laboratory/DDI-100/tree/master/dataset
         # for details of dataset structure.
@@ -96,7 +96,10 @@ class DDI100(Dataset):
                 width=1,
             )
 
-        return torch.Tensor(np.array(mask_img))
+        mask = torch.Tensor(np.array(mask_img))
+        mask = torch.transpose(mask, 0, 1)  # W x H => H x W
+        mask = torch.reshape(mask, (1, height, width))
+        return mask
 
 
 if __name__ == "__main__":
@@ -110,4 +113,4 @@ if __name__ == "__main__":
     for i in range(len(dataset)):
         print(f"Processing image {i+1}...")
         img, mask = dataset[i]
-        break
+        print("Img shape", img.shape, "mask shape", mask.shape)

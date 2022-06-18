@@ -10,6 +10,11 @@ torchvision = "*"
 pillow = "*"
 
 [dev-packages]
+black = "*"
 
 [requires]
 python_version = "3.9"
+
+[scripts]
+qa = "black --check ."
+format = "black ."
