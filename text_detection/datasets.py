@@ -43,10 +43,20 @@ class DDI100(Dataset):
     License: MIT
     """
 
-    def __init__(self, root_dir: str):
+    def __init__(self, root_dir: str, train=True, max_images=None):
         self._img_dir = f"{root_dir}/gen_imgs"
         self._boxes_dir = f"{root_dir}/gen_boxes"
         self._img_filenames = sorted(os.listdir(self._img_dir))
+
+        if max_images is not None:
+            self._img_filenames = self._img_filenames[:max_images]
+
+        train_split_idx = int(len(self._img_filenames) * 0.9)
+
+        if train:
+            self._img_filenames = self._img_filenames[:train_split_idx]
+        else:
+            self._img_filenames = self._img_filenames[train_split_idx:]
 
         if not os.path.exists(self._img_dir):
             raise Exception(f"Dataset images not found in {self._img_dir}")
@@ -67,7 +77,9 @@ class DDI100(Dataset):
         img_fname = self._img_filenames[idx]
         img_basename, _ = os.path.splitext(img_fname)
         img_path = f"{self._img_dir}/{self._img_filenames[idx]}"
-        img = read_image(img_path).float() / 255.0
+
+        # Read image as floats in [-0.5, 0.5]
+        img = (read_image(img_path).float() / 255.0) - 0.5
 
         # See https://github.com/machine-intelligence-laboratory/DDI-100/tree/master/dataset
         # for details of dataset structure.
