@@ -29,16 +29,6 @@ class DoubleConv(nn.Module):
         super().__init__()
 
         self.seq = nn.Sequential(
-            # nn.Conv2d(
-            #     in_channels, out_channels, kernel_size=3, padding="same", bias=False
-            # ),
-            # nn.BatchNorm2d(out_channels),
-            # nn.ReLU(),
-            # nn.Conv2d(
-            #     out_channels, out_channels, kernel_size=3, padding="same", bias=False
-            # ),
-            # nn.BatchNorm2d(out_channels),
-            # nn.ReLU(),
             DepthwiseConv(in_channels, out_channels),
             DepthwiseConv(out_channels, out_channels),
         )
