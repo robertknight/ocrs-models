@@ -90,7 +90,7 @@ class DDI100(Dataset):
             word_quads = [w["box"] for w in words]
 
         _, height, width = img.shape
-        return img, self._generate_mask(width, height, word_quads)
+        return img_path, img, self._generate_mask(width, height, word_quads)
 
     @staticmethod
     def _generate_mask(width: int, height: int, word_quads):
