@@ -109,8 +109,7 @@ class DDI100(Dataset):
             )
 
         mask = torch.Tensor(np.array(mask_img))
-        mask = torch.transpose(mask, 0, 1)  # W x H => H x W
-        mask = torch.reshape(mask, (1, height, width))
+        mask = torch.unsqueeze(mask, 0)  # Add channel dimension
         return mask
 
 
