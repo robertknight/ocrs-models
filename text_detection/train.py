@@ -27,7 +27,7 @@ def save_img_and_predicted_mask(basename, img, pred_mask, target_mask=None):
     pil_pred_mask = to_pil_image(pred_mask)
     pil_pred_mask.save(f"{basename}_pred_mask.png")
 
-    if target_mask:
+    if target_mask is not None:
         pil_target_mask = to_pil_image(target_mask)
         pil_target_mask.save(f"{basename}_mask.png")
 
