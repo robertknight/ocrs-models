@@ -18,7 +18,7 @@ def main():
     parser = ArgumentParser()
     parser.add_argument("model")
     parser.add_argument("image")
-    parser.add_argument("out_file")
+    parser.add_argument("out_basename")
     args = parser.parse_args()
 
     model = DetectionModel()
@@ -36,7 +36,7 @@ def main():
     img = resize(img, target_size)
 
     # Save eval input for inspection
-    to_pil_image(img + 0.5).save("eval-input.png")
+    to_pil_image(img + 0.5).save(f"{args.out_basename}-input.png")
 
     img = img.unsqueeze(0)  # Add dummy batch dimension
     start = time.time()
@@ -46,13 +46,17 @@ def main():
     print(f"Predicted text in {end - start:.2f}s", file=sys.stderr)
 
     pred_mask = pred_mask[0]  # Remove dummy batch dimension
-    binary_mask = binarize_mask(pred_mask, threshold=0.3)
+    threshold = 0.3
+    binary_mask = binarize_mask(pred_mask, threshold=threshold)
     binary_mask = resize(
         binary_mask, (input_height, input_width), InterpolationMode.NEAREST
     )
 
-    pred_mask_pil = to_pil_image(binary_mask)
-    pred_mask_pil.save(args.out_file)
+    masked_input = (input_img.float() / 255.0) * binary_mask
+    to_pil_image(masked_input).save(f"{args.out_basename}-masked.png")
+
+    to_pil_image(pred_mask).save(f"{args.out_basename}-prob-mask.png")
+    to_pil_image(binary_mask).save(f"{args.out_basename}-mask.png")
 
 
 if __name__ == "__main__":
