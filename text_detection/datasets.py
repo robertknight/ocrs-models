@@ -1,13 +1,57 @@
 from argparse import ArgumentParser
+import gzip
+import json
 import os
 import pickle
 import pickletools
+from typing import Callable, TextIO
 
 import numpy as np
 from PIL import Image, ImageDraw
+from tqdm import tqdm
 import torch
 from torch.utils.data import Dataset
-from torchvision.io import read_image
+from torchvision.io import ImageReadMode, read_image
+
+
+def transform_image(img: torch.Tensor) -> torch.Tensor:
+    """
+    Transform an image into the format expected by models in this package.
+
+    :param img: 8-bit grayscale image in CHW format.
+    :return: Float CHW tensor with pixel values in [-0.5, 0.5]
+    """
+
+    return img.float() / 255.0 - 0.5
+
+
+Polygon = list[tuple[int, int]]
+"""
+Polygon specified as a list of (x, y) coordinates of corners in clockwise order.
+"""
+
+
+def generate_mask(width: int, height: int, polys: list[Polygon]) -> torch.Tensor:
+    """
+    Generate a binary mask in CHW format from a set of bounding polygons.
+
+    :param width: Width of output image
+    :param height: Height of output image
+    :param polys: List of polygons to draw on the mask.
+    """
+    mask_img = Image.new("1", (width, height), 0)
+    draw = ImageDraw.Draw(mask_img)
+    for poly in polys:
+        draw.polygon(
+            poly,
+            fill="white",
+            outline="white",
+            width=1,
+        )
+
+    mask = torch.Tensor(np.array(mask_img))
+    mask = torch.unsqueeze(mask, 0)  # Add channel dimension
+    return mask
 
 
 class DDI100Unpickler(pickle.Unpickler):
@@ -78,8 +122,7 @@ class DDI100(Dataset):
         img_basename, _ = os.path.splitext(img_fname)
         img_path = f"{self._img_dir}/{self._img_filenames[idx]}"
 
-        # Read image as floats in [-0.5, 0.5]
-        img = (read_image(img_path).float() / 255.0) - 0.5
+        img = transform_image(read_image(img_path))
 
         # See https://github.com/machine-intelligence-laboratory/DDI-100/tree/master/dataset
         # for details of dataset structure.
@@ -94,23 +137,111 @@ class DDI100(Dataset):
 
     @staticmethod
     def _generate_mask(width: int, height: int, word_quads):
-        mask_img = Image.new("1", (width, height), 0)
-        draw = ImageDraw.Draw(mask_img)
-        for quad in word_quads:
-            # Re-order the corners in the polygon and order of (x, y)
-            # coordinates to get the format that PIL expects.
+        def reorder_quad(quad):
+            # Swap (x, y) coordinates
             coords = [(coord[1], coord[0]) for coord in quad.tolist()]
-            bottom_left, top_left, bottom_right, top_right = coords
-            draw.polygon(
-                [top_left, top_right, bottom_right, bottom_left],
-                fill="white",
-                outline="white",
-                width=1,
-            )
 
-        mask = torch.Tensor(np.array(mask_img))
-        mask = torch.unsqueeze(mask, 0)  # Add channel dimension
-        return mask
+            # Sort corners into clockwise order starting from top-left
+            bottom_left, top_left, bottom_right, top_right = coords
+            return [top_left, top_right, bottom_right, bottom_left]
+
+        reordered_quads = [reorder_quad(q) for q in word_quads]
+        return generate_mask(width, height, reordered_quads)
+
+
+class HierText(Dataset):
+    """
+    HierText dataset.
+
+    See https://github.com/google-research-datasets/hiertext and
+    https://arxiv.org/abs/2203.15143.
+
+    Photos from the Open Images dataset [1], containing text in natural scenes
+    and documents, annotated with paragraph, line and word-level polygons and
+    bounding boxes.
+
+    [1] https://storage.googleapis.com/openimages/web/index.html
+
+    License: CC BY-SA 4.0
+    """
+
+    def __init__(self, root_dir: str, train=True, max_images=None):
+        if train:
+            self._img_dir = f"{root_dir}/train"
+            annotations_file = f"{root_dir}/gt/train.jsonl.gz"
+        else:
+            self._img_dir = f"{root_dir}/validation"
+            annotations_file = f"{root_dir}/gt/validation.jsonl.gz"
+
+        if not os.path.exists(self._img_dir):
+            raise Exception(f'Image directory "{self._img_dir}" not found')
+
+        if not os.path.exists(annotations_file):
+            raise Exception(f'Label data file "{annotations_file}" not found')
+
+        lines_file = annotations_file.replace(".jsonl.gz", ".jsonl")
+        self._generate_json_lines_annotations(annotations_file, lines_file)
+
+        with open(lines_file) as fp:
+            self._annotations = [line for line in fp]
+
+        if max_images:
+            self._annotations = self._annotations[:max_images]
+
+    def __len__(self):
+        return len(self._annotations)
+
+    def __getitem__(self, idx: int):
+        """
+        Return tuple of (document image, binary_mask) tensors.
+
+        The document image is an NCHW tensor with one greyscale color channel.
+        The binary mask is an NCHW tensor.
+        """
+        annotations = json.loads(self._annotations[idx])
+        img_id = annotations["image_id"]
+        img_path = f"{self._img_dir}/{img_id}.jpg"
+
+        word_polys = []
+        for para in annotations["paragraphs"]:
+            for line in para["lines"]:
+                for word in line["words"]:
+                    # This currently adds all words, regardless of whether
+                    # they are legible, handwritten vs printed and vertical vs
+                    # horizontal. We might want to filter based on those
+                    # criteria.
+                    poly = [tuple(coord) for coord in word["vertices"]]
+                    word_polys.append(poly)
+
+        img = transform_image(read_image(img_path, ImageReadMode.GRAY))
+        _, height, width = img.shape
+
+        return img_path, img, generate_mask(width, height, word_polys)
+
+    @staticmethod
+    def _generate_json_lines_annotations(annotations_file: str, lines_file: str):
+        """
+        Generate a JSON Lines version of annotation data in `annotations_file`.
+
+        The training data is a large gzipped JSON file which is slow to parse
+        (despite the ".jsonl.gz" suffix, it is just JSON).
+
+        Convert this to JSONL, with one line per image, which can loaded much
+        more quickly, as individual entries can be parsed only when needed.
+        """
+        if os.path.exists(lines_file) and (
+            os.path.getmtime(lines_file) >= os.path.getmtime(annotations_file)
+        ):
+            return
+
+        print("Converting annotations from JSON to JSONL format...")
+        with gzip.open(annotations_file) as in_fp:
+            annotations = json.load(in_fp)["annotations"]
+
+            with open(lines_file, "w") as out_fp:
+                for ann in tqdm(annotations):
+                    ann_json = json.dumps(ann)
+                    out_fp.write(f"{ann_json}\n")
 
 
 if __name__ == "__main__":
@@ -118,10 +249,11 @@ if __name__ == "__main__":
     parser.add_argument("root_dir", help="Root directory of dataset")
     args = parser.parse_args()
 
-    dataset = DDI100(args.root_dir)
+    # dataset = DDI100(args.root_dir)
+    dataset = HierText(args.root_dir, train=False, max_images=100)
     print(f"Dataset length {len(dataset)}")
 
     for i in range(len(dataset)):
         print(f"Processing image {i+1}...")
-        img, mask = dataset[i]
+        path, img, mask = dataset[i]
         print("Img shape", img.shape, "mask shape", mask.shape)
