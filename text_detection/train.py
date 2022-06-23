@@ -6,7 +6,7 @@ import torch
 from torch.utils.data import DataLoader
 from torchvision.transforms.functional import resize, to_pil_image
 
-from .datasets import DDI100
+from .datasets import DDI100, HierText
 from .model import DetectionModel
 
 # This is approx 1/5th of the DDI-100 input image size.
@@ -96,21 +96,33 @@ def load_checkpoint(filename, model, optimizer):
 
 def main():
     parser = ArgumentParser()
+    parser.add_argument(
+        "dataset_type", type=str, choices=["ddi", "hiertext"], help="Format of dataset"
+    )
     parser.add_argument("data_dir")
+    parser.add_argument("--batch-size", type=int, default=4, help="Batch size")
     parser.add_argument("--checkpoint", type=str, help="Model checkpoint to load")
+    parser.add_argument(
+        "--max-images", type=int, help="Maximum number of images to load"
+    )
     args = parser.parse_args()
 
-    print(f"Torch threads {torch.get_num_threads()}")
+    if args.dataset_type == "ddi":
+        load_dataset = DDI100
+    elif args.dataset_type == "hiertext":
+        load_dataset = HierText
+    else:
+        raise Exception(f"Unknown dataset type {args.dataset_type}")
 
-    max_images = 100
-    batch_size = 4
+    batch_size = args.batch_size
+    max_images = args.max_images
 
-    train_dataset = DDI100(args.data_dir, train=True, max_images=max_images)
+    train_dataset = load_dataset(args.data_dir, train=True, max_images=max_images)
     train_dataloader = DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True, num_workers=2
     )
 
-    val_dataset = DDI100(args.data_dir, train=False, max_images=max_images)
+    val_dataset = load_dataset(args.data_dir, train=False, max_images=max_images)
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size)
 
     print(f"Train images {len(train_dataset)} in {len(train_dataloader)} batches")
