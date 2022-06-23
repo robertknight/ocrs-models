@@ -251,11 +251,24 @@ class HierText(Dataset):
 
 if __name__ == "__main__":
     parser = ArgumentParser()
+    parser.add_argument(
+        "dataset_type", choices=["ddi", "hiertext"], help="Type of dataset to load"
+    )
     parser.add_argument("root_dir", help="Root directory of dataset")
+    parser.add_argument(
+        "--max-images", type=int, help="Maximum number of images to process"
+    )
     args = parser.parse_args()
 
-    # dataset = DDI100(args.root_dir)
-    dataset = HierText(args.root_dir, train=False, max_images=100)
+    if args.dataset_type == "ddi":
+        load_dataset = DDI100
+    elif args.dataset_type == "hiertext":
+        load_dataset = HierText
+    else:
+        raise Exception(f"Unknown dataset type {args.dataset_type}")
+
+    dataset = load_dataset(args.root_dir, train=False, max_images=args.max_images)
+
     print(f"Dataset length {len(dataset)}")
 
     for i in range(len(dataset)):
