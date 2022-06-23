@@ -11,7 +11,8 @@ from PIL import Image, ImageDraw
 from tqdm import tqdm
 import torch
 from torch.utils.data import Dataset
-from torchvision.io import ImageReadMode, read_image
+from torchvision.io import ImageReadMode, read_image, write_png
+from torchvision.utils import draw_segmentation_masks
 
 
 def transform_image(img: torch.Tensor) -> torch.Tensor:
@@ -23,6 +24,10 @@ def transform_image(img: torch.Tensor) -> torch.Tensor:
     """
 
     return img.float() / 255.0 - 0.5
+
+
+def untransform_image(img: torch.Tensor) -> torch.Tensor:
+    return ((img + 0.5) * 255.0).type(torch.uint8)
 
 
 Polygon = list[tuple[int, int]]
@@ -256,4 +261,10 @@ if __name__ == "__main__":
     for i in range(len(dataset)):
         print(f"Processing image {i+1}...")
         path, img, mask = dataset[i]
-        print("Img shape", img.shape, "mask shape", mask.shape)
+
+        grey_img = untransform_image(img)
+        rgb_img = grey_img.expand((3, grey_img.shape[1], grey_img.shape[2]))
+        mask_hw = mask[0] > 0.5
+
+        seg_img = draw_segmentation_masks(rgb_img, mask_hw, alpha=0.3, colors="red")
+        write_png(seg_img, f"seg-{i}.png")
