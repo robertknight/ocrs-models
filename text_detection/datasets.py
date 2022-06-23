@@ -218,6 +218,7 @@ class HierText(Dataset):
                     poly = [tuple(coord) for coord in word["vertices"]]
                     word_polys.append(poly)
 
+        # TODO - Transform each image to a fixed size.
         img = transform_image(read_image(img_path, ImageReadMode.GRAY))
         _, height, width = img.shape
 
