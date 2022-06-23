@@ -114,8 +114,8 @@ class DDI100(Dataset):
         """
         Return tuple of (document image, binary_mask) tensors.
 
-        The document image is an NCHW tensor with one greyscale color channel.
-        The binary mask is an NCHW tensor.
+        The document image is an CHW tensor with one greyscale color channel.
+        The binary mask is an CHW tensor.
         """
 
         img_fname = self._img_filenames[idx]
@@ -195,8 +195,8 @@ class HierText(Dataset):
         """
         Return tuple of (document image, binary_mask) tensors.
 
-        The document image is an NCHW tensor with one greyscale color channel.
-        The binary mask is an NCHW tensor.
+        The document image is a CHW tensor with one greyscale color channel.
+        The binary mask is a CHW tensor.
         """
         annotations = json.loads(self._annotations[idx])
         img_id = annotations["image_id"]
