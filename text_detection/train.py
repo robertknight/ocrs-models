@@ -16,7 +16,7 @@ from .model import DetectionModel
 mask_size = (385, 272)
 
 
-def save_img_and_predicted_mask(basename, img, pred_mask, target_mask=None):
+def save_img_and_predicted_mask(basename: str, img, pred_mask, target_mask=None):
     # DDI100 dataset returns images with values in [-0.5, 0.5]. Adjust these
     # to be in the range [0, 255].
     img = img + 0.5
@@ -32,8 +32,8 @@ def save_img_and_predicted_mask(basename, img, pred_mask, target_mask=None):
         pil_target_mask.save(f"{basename}_mask.png")
 
 
-def train(epoch, dataloader, model, loss_fn, optimizer):
-    train_loss = 0
+def train(epoch: int, dataloader: DataLoader, model, loss_fn, optimizer):
+    train_loss = 0.0
     for batch_idx, (img_fname, img, mask) in enumerate(dataloader):
         start = time.time()
         img = resize(img, mask_size)
@@ -60,8 +60,8 @@ def train(epoch, dataloader, model, loss_fn, optimizer):
     return train_loss
 
 
-def test(dataloader, model, loss_fn):
-    test_loss = 0
+def test(dataloader: DataLoader, model, loss_fn):
+    test_loss = 0.0
     n_batches = len(dataloader)
 
     with torch.no_grad():
@@ -76,7 +76,7 @@ def test(dataloader, model, loss_fn):
     return test_loss
 
 
-def save_checkpoint(filename, model, optimizer, epoch):
+def save_checkpoint(filename: str, model, optimizer, epoch: int):
     torch.save(
         {
             "epoch": epoch,
@@ -87,7 +87,7 @@ def save_checkpoint(filename, model, optimizer, epoch):
     )
 
 
-def load_checkpoint(filename, model, optimizer):
+def load_checkpoint(filename: str, model, optimizer):
     checkpoint = torch.load(filename)
     model.load_state_dict(checkpoint["model_state"])
     optimizer.load_state_dict(checkpoint["optimizer_state"])

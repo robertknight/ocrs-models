@@ -4,7 +4,7 @@ import json
 import os
 import pickle
 import pickletools
-from typing import Callable, TextIO
+from typing import Callable, TextIO, cast
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -207,7 +207,7 @@ class HierText(Dataset):
         img_id = annotations["image_id"]
         img_path = f"{self._img_dir}/{img_id}.jpg"
 
-        word_polys = []
+        word_polys: list[Polygon] = []
         for para in annotations["paragraphs"]:
             for line in para["lines"]:
                 for word in line["words"]:
@@ -216,7 +216,7 @@ class HierText(Dataset):
                     # horizontal. We might want to filter based on those
                     # criteria.
                     poly = [tuple(coord) for coord in word["vertices"]]
-                    word_polys.append(poly)
+                    word_polys.append(cast(Polygon, poly))
 
         # TODO - Transform each image to a fixed size.
         img = transform_image(read_image(img_path, ImageReadMode.GRAY))
@@ -261,6 +261,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    load_dataset: Callable[..., DDI100 | HierText]
     if args.dataset_type == "ddi":
         load_dataset = DDI100
     elif args.dataset_type == "hiertext":
