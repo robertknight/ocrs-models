@@ -117,12 +117,19 @@ def main():
     batch_size = args.batch_size
     max_images = args.max_images
 
+    if max_images:
+        validation_max_images = max(10, int(max_images * 0.1))
+    else:
+        validation_max_images = None
+
     train_dataset = load_dataset(args.data_dir, train=True, max_images=max_images)
     train_dataloader = DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True, num_workers=2
     )
 
-    val_dataset = load_dataset(args.data_dir, train=False, max_images=max_images)
+    val_dataset = load_dataset(
+        args.data_dir, train=False, max_images=validation_max_images
+    )
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size)
 
     print(f"Train images {len(train_dataset)} in {len(train_dataloader)} batches")
