@@ -32,7 +32,11 @@ def save_img_and_predicted_mask(basename: str, img, pred_mask, target_mask=None)
         pil_target_mask.save(f"{basename}_mask.png")
 
 
-def train(epoch: int, dataloader: DataLoader, model, loss_fn, optimizer):
+def train(
+    epoch: int, dataloader: DataLoader, model: DetectionModel, loss_fn, optimizer
+):
+    model.train()
+
     train_loss = 0.0
     for batch_idx, (img_fname, img, mask) in enumerate(dataloader):
         start = time.time()
@@ -60,11 +64,13 @@ def train(epoch: int, dataloader: DataLoader, model, loss_fn, optimizer):
     return train_loss
 
 
-def test(dataloader: DataLoader, model, loss_fn):
+def test(dataloader: DataLoader, model: DetectionModel, loss_fn):
+    model.eval()
+
     test_loss = 0.0
     n_batches = len(dataloader)
 
-    with torch.no_grad():
+    with torch.inference_mode():
         for img_fname, img, mask in dataloader:
             img = resize(img, mask_size)
             mask = resize(mask, mask_size)
