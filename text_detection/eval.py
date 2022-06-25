@@ -22,6 +22,8 @@ def main():
     args = parser.parse_args()
 
     model = DetectionModel()
+    model.eval()
+
     checkpoint = torch.load(args.model)
     model.load_state_dict(checkpoint["model_state"])
 
@@ -40,7 +42,8 @@ def main():
 
     img = img.unsqueeze(0)  # Add dummy batch dimension
     start = time.time()
-    pred_mask = model(img)
+    with torch.inference_mode():
+        pred_mask = model(img)
     end = time.time()
 
     print(f"Predicted text in {end - start:.2f}s", file=sys.stderr)
