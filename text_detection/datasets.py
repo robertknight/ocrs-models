@@ -92,7 +92,7 @@ class DDI100(Dataset):
     License: MIT
     """
 
-    def __init__(self, root_dir: str, train=True, max_images=None):
+    def __init__(self, root_dir: str, train=True, transform=None, max_images=None):
         self._img_dir = f"{root_dir}/gen_imgs"
         self._boxes_dir = f"{root_dir}/gen_boxes"
         self._img_filenames = sorted(os.listdir(self._img_dir))
@@ -111,6 +111,8 @@ class DDI100(Dataset):
             raise Exception(f"Dataset images not found in {self._img_dir}")
         if not os.path.exists(self._boxes_dir):
             raise Exception(f"Dataset masks not found in {self._boxes_dir}")
+
+        self.transform = transform
 
     def __len__(self):
         return len(self._img_filenames)
@@ -138,7 +140,13 @@ class DDI100(Dataset):
             word_quads = [w["box"] for w in words]
 
         _, height, width = img.shape
-        return img_path, img, self._generate_mask(width, height, word_quads)
+        mask = self._generate_mask(width, height, word_quads)
+
+        if self.transform:
+            img = self.transform(img)
+            mask = self.transform(mask)
+
+        return img_path, img, mask
 
     @staticmethod
     def _generate_mask(width: int, height: int, word_quads):
@@ -170,7 +178,7 @@ class HierText(Dataset):
     License: CC BY-SA 4.0
     """
 
-    def __init__(self, root_dir: str, train=True, max_images=None):
+    def __init__(self, root_dir: str, train=True, transform=None, max_images=None):
         if train:
             self._img_dir = f"{root_dir}/train"
             annotations_file = f"{root_dir}/gt/train.jsonl.gz"
@@ -192,6 +200,8 @@ class HierText(Dataset):
 
         if max_images:
             self._annotations = self._annotations[:max_images]
+
+        self.transform = transform
 
     def __len__(self):
         return len(self._annotations)
@@ -218,11 +228,16 @@ class HierText(Dataset):
                     poly = [tuple(coord) for coord in word["vertices"]]
                     word_polys.append(cast(Polygon, poly))
 
-        # TODO - Transform each image to a fixed size.
         img = transform_image(read_image(img_path, ImageReadMode.GRAY))
         _, height, width = img.shape
 
-        return img_path, img, generate_mask(width, height, word_polys)
+        mask = generate_mask(width, height, word_polys)
+
+        if self.transform:
+            img = self.transform(img)
+            mask = self.transform(mask)
+
+        return img_path, img, mask
 
     @staticmethod
     def _generate_json_lines_annotations(annotations_file: str, lines_file: str):

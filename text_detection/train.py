@@ -3,8 +3,11 @@ import os
 import time
 
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision.transforms.functional import resize, to_pil_image
+from torchvision.transforms import Resize
+from tqdm import tqdm
 
 from .datasets import DDI100, HierText
 from .model import DetectionModel
@@ -37,11 +40,13 @@ def train(
 ):
     model.train()
 
+    train_iterable = tqdm(dataloader)
+    train_iterable.set_description(f"Epoch {epoch}")
+
     train_loss = 0.0
-    for batch_idx, (img_fname, img, mask) in enumerate(dataloader):
+
+    for batch_idx, (img_fname, img, mask) in enumerate(train_iterable):
         start = time.time()
-        img = resize(img, mask_size)
-        mask = resize(mask, mask_size)
         pred_mask = model(img)
 
         save_img_and_predicted_mask("train-sample", img[0], pred_mask[0], mask[0])
@@ -56,9 +61,9 @@ def train(
 
         train_loss += loss
 
-        print(
-            f"Epoch {epoch} train batch {batch_idx} loss {loss} ({time_per_img:.2f} sec/img)"
-        )
+        train_iterable.set_postfix({"loss": loss.item(), "sec/img": time_per_img})
+
+    train_iterable.clear()
 
     train_loss /= len(dataloader)
     return train_loss
@@ -72,8 +77,6 @@ def test(dataloader: DataLoader, model: DetectionModel, loss_fn):
 
     with torch.inference_mode():
         for img_fname, img, mask in dataloader:
-            img = resize(img, mask_size)
-            mask = resize(mask, mask_size)
             pred_mask = model(img)
             test_loss += loss_fn(pred_mask, mask).item()
             save_img_and_predicted_mask("test-sample", img[0], pred_mask[0], mask[0])
@@ -128,13 +131,20 @@ def main():
     else:
         validation_max_images = None
 
-    train_dataset = load_dataset(args.data_dir, train=True, max_images=max_images)
+    transform = nn.Sequential(Resize(mask_size))
+
+    train_dataset = load_dataset(
+        args.data_dir, transform=transform, train=True, max_images=max_images
+    )
     train_dataloader = DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True, num_workers=2
     )
 
     val_dataset = load_dataset(
-        args.data_dir, train=False, max_images=validation_max_images
+        args.data_dir,
+        transform=transform,
+        train=False,
+        max_images=validation_max_images,
     )
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size)
 
@@ -160,7 +170,9 @@ def main():
     while True:
         train_loss = train(epoch, train_dataloader, model, loss_fn, optimizer)
         val_loss = test(val_dataloader, model, loss_fn)
-        print(f"Epoch {epoch} train loss {train_loss} validation loss {val_loss}")
+        print(
+            f"Epoch {epoch} train loss {train_loss:.4f} validation loss {val_loss:.4f}"
+        )
 
         if train_loss < min_train_loss:
             min_loss = train_loss
