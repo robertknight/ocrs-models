@@ -13,6 +13,7 @@ tqdm = "*"
 [dev-packages]
 black = "*"
 mypy = "*"
+types-pillow = "*"
 
 [requires]
 python_version = "3.10"
