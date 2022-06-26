@@ -44,8 +44,8 @@ def generate_mask(width: int, height: int, polys: list[Polygon]) -> torch.Tensor
     :param height: Height of output image
     :param polys: List of polygons to draw on the mask.
     """
-    mask_img = Image.new("1", (width, height), 0)
-    draw = ImageDraw.Draw(mask_img)
+    text_mask_img = Image.new("1", (width, height), 0)
+    draw = ImageDraw.Draw(text_mask_img)
     for poly in polys:
         draw.polygon(
             poly,
@@ -57,11 +57,27 @@ def generate_mask(width: int, height: int, polys: list[Polygon]) -> torch.Tensor
     # Use numpy to convert the mask from bool -> float rather than PyTorch to
     # work around https://github.com/pytorch/pytorch/issues/54789. This caused
     # True values to be mapped to 255.0 instead of 1.0 on Linux (but not macOS).
-    mask_ary = np.array(mask_img, dtype="float32")
+    text_mask_ary = np.array(text_mask_img, dtype="float32")
 
-    mask = torch.Tensor(mask_ary)
-    mask = torch.unsqueeze(mask, 0)  # Add channel dimension
-    return mask
+    bottom_line_img = Image.new("1", (width, height), 0)
+    draw = ImageDraw.Draw(bottom_line_img)
+    for poly in polys:
+        # This assumes the polygon has 4 points in clockwise order, and so the
+        # last two are the points at the bottom of the polygon.
+        bottom_points = poly[-2:]
+        draw.line(
+            bottom_points,
+            fill="white",
+            # Make the line thick so that it is still visible if the mask is
+            # resized to a smaller size by the dataset's transforms.
+            width=4,
+        )
+    bottom_line_mask_ary = np.array(bottom_line_img, dtype="float32")
+
+    text_mask = torch.Tensor(text_mask_ary)
+    bottom_line_mask = torch.Tensor(bottom_line_mask_ary)
+
+    return torch.stack([text_mask, bottom_line_mask])
 
 
 class DDI100Unpickler(pickle.Unpickler):

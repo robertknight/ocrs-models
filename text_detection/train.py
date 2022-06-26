@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
 import os
 import time
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -21,7 +22,12 @@ dataset, which consists of scanned A4 pages.
 """
 
 
-def save_img_and_predicted_mask(basename: str, img, pred_mask, target_mask=None):
+def save_img_and_predicted_mask(
+    basename: str,
+    img,
+    pred_masks: list[torch.Tensor],
+    target_masks: Optional[list[torch.Tensor]] = None,
+):
     # Datasets yield images with values in [-0.5, 0.5]. Convert these to [0, 1]
     # as required by `to_pil_image`.
     img = img + 0.5
@@ -29,12 +35,14 @@ def save_img_and_predicted_mask(basename: str, img, pred_mask, target_mask=None)
     pil_img = to_pil_image(img)
     pil_img.save(f"{basename}_input.png")
 
-    pil_pred_mask = to_pil_image(pred_mask)
-    pil_pred_mask.save(f"{basename}_pred_mask.png")
+    for i, pred_mask in enumerate(pred_masks):
+        pil_pred_mask = to_pil_image(pred_mask)
+        pil_pred_mask.save(f"{basename}_pred_mask_{i}.png")
 
-    if target_mask is not None:
-        pil_target_mask = to_pil_image(target_mask)
-        pil_target_mask.save(f"{basename}_mask.png")
+    if target_masks is not None:
+        for i, target_mask in enumerate(target_masks):
+            pil_target_mask = to_pil_image(target_mask)
+            pil_target_mask.save(f"{basename}_mask_{i}.png")
 
 
 def train(
@@ -52,21 +60,21 @@ def train(
 
     train_loss = 0.0
 
-    for batch_idx, (img_fname, img, mask) in enumerate(train_iterable):
+    for batch_idx, (img_fname, img, masks) in enumerate(train_iterable):
         img = img.to(device)
-        mask = mask.to(device)
+        masks = masks.to(device)
         start = time.time()
 
-        pred_mask = model(img)
+        pred_masks = model(img)
 
-        loss = loss_fn(pred_mask, mask)
+        loss = loss_fn(pred_masks, masks)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
         time_per_img = (time.time() - start) / img.shape[0]
         train_loss += loss
-        save_img_and_predicted_mask("train-sample", img[0], pred_mask[0], mask[0])
+        save_img_and_predicted_mask("train-sample", img[0], pred_masks[0], masks[0])
         train_iterable.set_postfix({"loss": loss.item(), "sec/img": time_per_img})
 
     train_iterable.clear()
@@ -82,14 +90,14 @@ def test(device: torch.device, dataloader: DataLoader, model: DetectionModel, lo
     n_batches = len(dataloader)
 
     with torch.inference_mode():
-        for img_fname, img, mask in dataloader:
+        for img_fname, img, masks in dataloader:
             img = img.to(device)
-            mask = mask.to(device)
+            masks = masks.to(device)
 
-            pred_mask = model(img)
+            pred_masks = model(img)
 
-            test_loss += loss_fn(pred_mask, mask).item()
-            save_img_and_predicted_mask("test-sample", img[0], pred_mask[0], mask[0])
+            test_loss += loss_fn(pred_masks, masks).item()
+            save_img_and_predicted_mask("test-sample", img[0], pred_masks[0], masks[0])
 
     test_loss /= n_batches
     return test_loss
@@ -163,7 +171,11 @@ def main():
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = DetectionModel().to(device)
+
+    # TODO - Adjust weighting of loss here to reflect class imbalances,
+    # especially for the line-bottom map.
     loss_fn = torch.nn.BCELoss()
+
     optimizer = torch.optim.Adam(model.parameters())
 
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
