@@ -24,7 +24,7 @@ def main():
     model = DetectionModel()
     model.eval()
 
-    checkpoint = torch.load(args.model)
+    checkpoint = torch.load(args.model, map_location=torch.device("cpu"))
     model.load_state_dict(checkpoint["model_state"])
 
     input_img = read_image(args.image, ImageReadMode.GRAY)

@@ -36,7 +36,12 @@ def save_img_and_predicted_mask(basename: str, img, pred_mask, target_mask=None)
 
 
 def train(
-    epoch: int, dataloader: DataLoader, model: DetectionModel, loss_fn, optimizer
+    epoch: int,
+    device: torch.device,
+    dataloader: DataLoader,
+    model: DetectionModel,
+    loss_fn,
+    optimizer,
 ):
     model.train()
 
@@ -46,21 +51,20 @@ def train(
     train_loss = 0.0
 
     for batch_idx, (img_fname, img, mask) in enumerate(train_iterable):
+        img = img.to(device)
+        mask = mask.to(device)
         start = time.time()
-        pred_mask = model(img)
 
-        save_img_and_predicted_mask("train-sample", img[0], pred_mask[0], mask[0])
+        pred_mask = model(img)
 
         loss = loss_fn(pred_mask, mask)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        end = time.time()
-        time_per_img = (end - start) / img.shape[0]
-
+        time_per_img = (time.time() - start) / img.shape[0]
         train_loss += loss
-
+        save_img_and_predicted_mask("train-sample", img[0], pred_mask[0], mask[0])
         train_iterable.set_postfix({"loss": loss.item(), "sec/img": time_per_img})
 
     train_iterable.clear()
@@ -69,7 +73,7 @@ def train(
     return train_loss
 
 
-def test(dataloader: DataLoader, model: DetectionModel, loss_fn):
+def test(device: torch.device, dataloader: DataLoader, model: DetectionModel, loss_fn):
     model.eval()
 
     test_loss = 0.0
@@ -77,7 +81,11 @@ def test(dataloader: DataLoader, model: DetectionModel, loss_fn):
 
     with torch.inference_mode():
         for img_fname, img, mask in dataloader:
+            img = img.to(device)
+            mask = mask.to(device)
+
             pred_mask = model(img)
+
             test_loss += loss_fn(pred_mask, mask).item()
             save_img_and_predicted_mask("test-sample", img[0], pred_mask[0], mask[0])
 
@@ -151,7 +159,8 @@ def main():
     print(f"Train images {len(train_dataset)} in {len(train_dataloader)} batches")
     print(f"Validation images {len(val_dataset)} in {len(val_dataloader)} batches")
 
-    model = DetectionModel()
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    model = DetectionModel().to(device)
     loss_fn = torch.nn.BCELoss()
     optimizer = torch.optim.Adam(model.parameters())
 
@@ -168,8 +177,8 @@ def main():
         epoch = checkpoint["epoch"]
 
     while True:
-        train_loss = train(epoch, train_dataloader, model, loss_fn, optimizer)
-        val_loss = test(val_dataloader, model, loss_fn)
+        train_loss = train(epoch, device, train_dataloader, model, loss_fn, optimizer)
+        val_loss = test(device, val_dataloader, model, loss_fn)
         print(
             f"Epoch {epoch} train loss {train_loss:.4f} validation loss {val_loss:.4f}"
         )
