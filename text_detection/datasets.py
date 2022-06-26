@@ -54,7 +54,12 @@ def generate_mask(width: int, height: int, polys: list[Polygon]) -> torch.Tensor
             width=1,
         )
 
-    mask = torch.Tensor(np.array(mask_img))
+    # Use numpy to convert the mask from bool -> float rather than PyTorch to
+    # work around https://github.com/pytorch/pytorch/issues/54789. This caused
+    # True values to be mapped to 255.0 instead of 1.0 on Linux (but not macOS).
+    mask_ary = np.array(mask_img, dtype="float32")
+
+    mask = torch.Tensor(mask_ary)
     mask = torch.unsqueeze(mask, 0)  # Add channel dimension
     return mask
 
