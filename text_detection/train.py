@@ -12,16 +12,18 @@ from tqdm import tqdm
 from .datasets import DDI100, HierText
 from .model import DetectionModel
 
-# This is approx 1/5th of the DDI-100 input image size.
-# mask_size = (771, 545)
-
-# This is approx 1/10th of the DDI-100 input image size.
 mask_size = (385, 272)
+"""
+Size of the input image and output targets that the model is trained with.
+
+This was originally chosen as ~1/10th of the size of images in the DDI-100
+dataset, which consists of scanned A4 pages.
+"""
 
 
 def save_img_and_predicted_mask(basename: str, img, pred_mask, target_mask=None):
-    # DDI100 dataset returns images with values in [-0.5, 0.5]. Adjust these
-    # to be in the range [0, 255].
+    # Datasets yield images with values in [-0.5, 0.5]. Convert these to [0, 1]
+    # as required by `to_pil_image`.
     img = img + 0.5
 
     pil_img = to_pil_image(img)

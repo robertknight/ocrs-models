@@ -30,9 +30,8 @@ def main():
     input_img = read_image(args.image, ImageReadMode.GRAY)
     _, input_height, input_width = input_img.shape
 
-    # Target size and image processing here matches the model.
+    # Input and prediction target size. This matches the training process.
     target_size = (385, 272)
-    # target_size = (input_height // 2, input_width // 2)
 
     img = input_img.float() / 255.0 - 0.5
     img = resize(img, target_size)
