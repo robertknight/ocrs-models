@@ -64,7 +64,7 @@ def train(
     model.train()
 
     train_iterable = tqdm(dataloader)
-    train_iterable.set_description(f"Epoch {epoch}")
+    train_iterable.set_description(f"Training (epoch {epoch})")
 
     train_loss = 0.0
 
@@ -108,8 +108,11 @@ def test(
     test_loss = 0.0
     n_batches = len(dataloader)
 
+    test_iterable = tqdm(dataloader)
+    test_iterable.set_description(f"Testing")
+
     with torch.inference_mode():
-        for img_fname, img, masks in dataloader:
+        for img_fname, img, masks in test_iterable:
             img = img.to(device)
             masks = masks.to(device)
 
@@ -121,6 +124,8 @@ def test(
                 save_img_and_predicted_mask(
                     "test-sample", img_fname[0], img[0], pred_masks[0], masks[0]
                 )
+
+    test_iterable.clear()
 
     test_loss /= n_batches
     return test_loss
