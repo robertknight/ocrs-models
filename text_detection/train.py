@@ -79,9 +79,9 @@ def train(
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        train_loss += loss.item()
 
         time_per_img = (time.time() - start) / img.shape[0]
-        train_loss += loss
 
         if save_debug_images:
             save_img_and_predicted_mask(
