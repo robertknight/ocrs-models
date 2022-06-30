@@ -54,30 +54,31 @@ def generate_mask(width: int, height: int, polys: list[Polygon]) -> torch.Tensor
             width=1,
         )
 
+    outline_img = Image.new("1", (width, height), 0)
+    draw = ImageDraw.Draw(outline_img)
+    for poly in polys:
+        draw.polygon(
+            poly,
+            fill=None,
+            outline="white",
+            # Make the line thick so that it is still visible if the mask is
+            # resized to a smaller size by the dataset's transforms.
+            #
+            # TODO - Make the width dynamic depending on the input size reduction
+            # factor.
+            width=4,
+        )
+
     # Use numpy to convert the mask from bool -> float rather than PyTorch to
     # work around https://github.com/pytorch/pytorch/issues/54789. This caused
     # True values to be mapped to 255.0 instead of 1.0 on Linux (but not macOS).
     text_mask_ary = np.array(text_mask_img, dtype="float32")
-
-    bottom_line_img = Image.new("1", (width, height), 0)
-    draw = ImageDraw.Draw(bottom_line_img)
-    for poly in polys:
-        # This assumes the polygon has 4 points in clockwise order, and so the
-        # last two are the points at the bottom of the polygon.
-        bottom_points = poly[-2:]
-        draw.line(
-            bottom_points,
-            fill="white",
-            # Make the line thick so that it is still visible if the mask is
-            # resized to a smaller size by the dataset's transforms.
-            width=4,
-        )
-    bottom_line_mask_ary = np.array(bottom_line_img, dtype="float32")
+    outline_mask_ary = np.array(outline_img, dtype="float32")
 
     text_mask = torch.Tensor(text_mask_ary)
-    bottom_line_mask = torch.Tensor(bottom_line_mask_ary)
+    outline_mask = torch.Tensor(outline_mask_ary)
 
-    return torch.stack([text_mask, bottom_line_mask])
+    return torch.stack([text_mask, outline_mask])
 
 
 class DDI100Unpickler(pickle.Unpickler):
@@ -257,6 +258,9 @@ class HierText(Dataset):
         if self.transform:
             img = self.transform(img)
             mask = self.transform(mask)
+
+            # Sharpen the mask
+            mask = torch.where(mask > 0.0, 1.0, 0.0)
 
         return img_path, img, mask
 
