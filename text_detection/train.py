@@ -193,7 +193,7 @@ def main():
     model = DetectionModel().to(device)
 
     # TODO - Adjust weighting of loss here to reflect class imbalances,
-    # especially for the line-bottom map.
+    # especially for the outline mask.
     loss_fn = torch.nn.BCELoss()
 
     optimizer = torch.optim.Adam(model.parameters())
