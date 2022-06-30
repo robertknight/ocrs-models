@@ -96,7 +96,13 @@ def train(
     return train_loss
 
 
-def test(device: torch.device, dataloader: DataLoader, model: DetectionModel, loss_fn):
+def test(
+    device: torch.device,
+    dataloader: DataLoader,
+    model: DetectionModel,
+    loss_fn: LossFunc,
+    save_debug_images=False,
+):
     model.eval()
 
     test_loss = 0.0
@@ -110,9 +116,11 @@ def test(device: torch.device, dataloader: DataLoader, model: DetectionModel, lo
             pred_masks = model(img)
 
             test_loss += loss_fn(pred_masks, masks).item()
-            save_img_and_predicted_mask(
-                "test-sample", img_fname[0], img[0], pred_masks[0], masks[0]
-            )
+
+            if save_debug_images:
+                save_img_and_predicted_mask(
+                    "test-sample", img_fname[0], img[0], pred_masks[0], masks[0]
+                )
 
     test_loss /= n_batches
     return test_loss
@@ -220,7 +228,9 @@ def main():
             optimizer,
             save_debug_images=args.debug_images,
         )
-        val_loss = test(device, val_dataloader, model, loss_fn)
+        val_loss = test(
+            device, val_dataloader, model, loss_fn, save_debug_images=args.debug_images
+        )
         print(
             f"Epoch {epoch} train loss {train_loss:.4f} validation loss {val_loss:.4f}"
         )
