@@ -1,7 +1,8 @@
 from argparse import ArgumentParser
 import os
+import shutil
 import time
-from typing import Optional
+from typing import Callable, Optional
 
 import torch
 import torch.nn as nn
@@ -24,7 +25,8 @@ dataset, which consists of scanned A4 pages.
 
 def save_img_and_predicted_mask(
     basename: str,
-    img,
+    img_filename: str,
+    img: torch.Tensor,
     pred_masks: list[torch.Tensor],
     target_masks: Optional[list[torch.Tensor]] = None,
 ):
@@ -32,8 +34,10 @@ def save_img_and_predicted_mask(
     # as required by `to_pil_image`.
     img = img + 0.5
 
+    shutil.copyfile(img_filename, f"{basename}_input.png")
+
     pil_img = to_pil_image(img)
-    pil_img.save(f"{basename}_input.png")
+    pil_img.save(f"{basename}_input_scaled.png")
 
     for i, pred_mask in enumerate(pred_masks):
         pil_pred_mask = to_pil_image(pred_mask)
@@ -45,13 +49,17 @@ def save_img_and_predicted_mask(
             pil_target_mask.save(f"{basename}_mask_{i}.png")
 
 
+LossFunc = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
+
+
 def train(
     epoch: int,
     device: torch.device,
     dataloader: DataLoader,
     model: DetectionModel,
-    loss_fn,
-    optimizer,
+    loss_fn: LossFunc,
+    optimizer: torch.optim.Optimizer,
+    save_debug_images=False,
 ):
     model.train()
 
@@ -74,7 +82,12 @@ def train(
 
         time_per_img = (time.time() - start) / img.shape[0]
         train_loss += loss
-        save_img_and_predicted_mask("train-sample", img[0], pred_masks[0], masks[0])
+
+        if save_debug_images:
+            save_img_and_predicted_mask(
+                "train-sample", img_fname[0], img[0], pred_masks[0], masks[0]
+            )
+
         train_iterable.set_postfix({"loss": loss.item(), "sec/img": time_per_img})
 
     train_iterable.clear()
@@ -97,7 +110,9 @@ def test(device: torch.device, dataloader: DataLoader, model: DetectionModel, lo
             pred_masks = model(img)
 
             test_loss += loss_fn(pred_masks, masks).item()
-            save_img_and_predicted_mask("test-sample", img[0], pred_masks[0], masks[0])
+            save_img_and_predicted_mask(
+                "test-sample", img_fname[0], img[0], pred_masks[0], masks[0]
+            )
 
     test_loss /= n_batches
     return test_loss
@@ -129,6 +144,11 @@ def main():
     parser.add_argument("data_dir")
     parser.add_argument("--batch-size", type=int, default=4, help="Batch size")
     parser.add_argument("--checkpoint", type=str, help="Model checkpoint to load")
+    parser.add_argument(
+        "--debug-images",
+        action="store_true",
+        help="Save debugging images during training",
+    )
     parser.add_argument(
         "--max-images", type=int, help="Maximum number of images to load"
     )
@@ -191,7 +211,15 @@ def main():
         epoch = checkpoint["epoch"]
 
     while True:
-        train_loss = train(epoch, device, train_dataloader, model, loss_fn, optimizer)
+        train_loss = train(
+            epoch,
+            device,
+            train_dataloader,
+            model,
+            loss_fn,
+            optimizer,
+            save_debug_images=args.debug_images,
+        )
         val_loss = test(device, val_dataloader, model, loss_fn)
         print(
             f"Epoch {epoch} train loss {train_loss:.4f} validation loss {val_loss:.4f}"
