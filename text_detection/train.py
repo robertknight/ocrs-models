@@ -14,7 +14,8 @@ from tqdm import tqdm
 from .datasets import DDI100, HierText
 from .model import DetectionModel
 
-mask_size = (385, 272)
+# mask_size = (385, 272)
+mask_size = (636, 450)
 """
 Size of the input image and output targets that the model is trained with.
 

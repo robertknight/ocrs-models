@@ -8,6 +8,7 @@ import torch
 from torchvision.transforms.functional import InterpolationMode, resize, to_pil_image
 
 from .model import DetectionModel
+from .train import mask_size
 
 
 def binarize_mask(mask: torch.Tensor, threshold: float) -> torch.Tensor:
@@ -31,7 +32,7 @@ def main():
     _, input_height, input_width = input_img.shape
 
     # Input and prediction target size. This matches the training process.
-    target_size = (385, 272)
+    target_size = mask_size
 
     img = input_img.float() / 255.0 - 0.5
     img = resize(img, target_size)
