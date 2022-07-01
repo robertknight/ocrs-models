@@ -57,10 +57,12 @@ def generate_mask(width: int, height: int, polys: list[Polygon]) -> torch.Tensor
     outline_img = Image.new("1", (width, height), 0)
     draw = ImageDraw.Draw(outline_img)
     for poly in polys:
-        draw.polygon(
-            poly,
-            fill=None,
-            outline="white",
+        # `draw.line` is much faster than `draw.polygon` with an empty fill.
+        poly_lines = poly.copy()
+        poly_lines.append(poly_lines[0])
+        draw.line(
+            poly_lines,
+            fill="white",
             # Make the line thick so that it is still visible if the mask is
             # resized to a smaller size by the dataset's transforms.
             #
