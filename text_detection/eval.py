@@ -8,6 +8,7 @@ import torch
 from torchvision.transforms.functional import InterpolationMode, resize, to_pil_image
 
 from .model import DetectionModel
+from .train import mask_size
 
 
 def binarize_mask(mask: torch.Tensor, threshold: float) -> torch.Tensor:
@@ -31,7 +32,7 @@ def main():
     _, input_height, input_width = input_img.shape
 
     # Input and prediction target size. This matches the training process.
-    target_size = (385, 272)
+    target_size = mask_size
 
     img = input_img.float() / 255.0 - 0.5
     img = resize(img, target_size)
@@ -42,23 +43,23 @@ def main():
     img = img.unsqueeze(0)  # Add dummy batch dimension
     start = time.time()
     with torch.inference_mode():
-        pred_mask = model(img)
+        pred_masks = model(img)
     end = time.time()
 
     print(f"Predicted text in {end - start:.2f}s", file=sys.stderr)
 
-    pred_mask = pred_mask[0]  # Remove dummy batch dimension
+    pred_masks = pred_masks[0]  # Remove dummy batch dimension
     threshold = 0.3
-    binary_mask = binarize_mask(pred_mask, threshold=threshold)
+    binary_mask = binarize_mask(pred_masks, threshold=threshold)
     binary_mask = resize(
         binary_mask, (input_height, input_width), InterpolationMode.NEAREST
     )
+    text_mask = binary_mask[0]
+    text_regions = (input_img.float() / 255.0) * text_mask
 
-    masked_input = (input_img.float() / 255.0) * binary_mask
-    to_pil_image(masked_input).save(f"{args.out_basename}-masked.png")
-
-    to_pil_image(pred_mask).save(f"{args.out_basename}-prob-mask.png")
-    to_pil_image(binary_mask).save(f"{args.out_basename}-mask.png")
+    to_pil_image(text_regions).save(f"{args.out_basename}-text-regions.png")
+    to_pil_image(pred_masks[0]).save(f"{args.out_basename}-text-probs.png")
+    to_pil_image(text_mask).save(f"{args.out_basename}-text-mask.png")
 
 
 if __name__ == "__main__":

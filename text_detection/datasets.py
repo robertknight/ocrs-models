@@ -44,8 +44,8 @@ def generate_mask(width: int, height: int, polys: list[Polygon]) -> torch.Tensor
     :param height: Height of output image
     :param polys: List of polygons to draw on the mask.
     """
-    mask_img = Image.new("1", (width, height), 0)
-    draw = ImageDraw.Draw(mask_img)
+    text_mask_img = Image.new("1", (width, height), 0)
+    draw = ImageDraw.Draw(text_mask_img)
     for poly in polys:
         draw.polygon(
             poly,
@@ -57,11 +57,9 @@ def generate_mask(width: int, height: int, polys: list[Polygon]) -> torch.Tensor
     # Use numpy to convert the mask from bool -> float rather than PyTorch to
     # work around https://github.com/pytorch/pytorch/issues/54789. This caused
     # True values to be mapped to 255.0 instead of 1.0 on Linux (but not macOS).
-    mask_ary = np.array(mask_img, dtype="float32")
+    text_mask_ary = np.array(text_mask_img, dtype="float32")
 
-    mask = torch.Tensor(mask_ary)
-    mask = torch.unsqueeze(mask, 0)  # Add channel dimension
-    return mask
+    return torch.Tensor(text_mask_ary)
 
 
 class DDI100Unpickler(pickle.Unpickler):
@@ -145,7 +143,9 @@ class DDI100(Dataset):
             word_quads = [w["box"] for w in words]
 
         _, height, width = img.shape
+
         mask = self._generate_mask(width, height, word_quads)
+        mask = torch.unsqueeze(mask, 0)  # Add channel dimension
 
         if self.transform:
             img = self.transform(img)
@@ -237,6 +237,7 @@ class HierText(Dataset):
         _, height, width = img.shape
 
         mask = generate_mask(width, height, word_polys)
+        mask = torch.unsqueeze(mask, 0)  # Add channel dimension
 
         if self.transform:
             img = self.transform(img)

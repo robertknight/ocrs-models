@@ -1,6 +1,8 @@
 from argparse import ArgumentParser
 import os
+import shutil
 import time
+from typing import Callable, Optional
 
 import torch
 import torch.nn as nn
@@ -12,7 +14,9 @@ from tqdm import tqdm
 from .datasets import DDI100, HierText
 from .model import DetectionModel
 
-mask_size = (385, 272)
+mask_height = 400
+mask_width = int(mask_height * 0.75)
+mask_size = (mask_height, mask_width)
 """
 Size of the input image and output targets that the model is trained with.
 
@@ -21,20 +25,33 @@ dataset, which consists of scanned A4 pages.
 """
 
 
-def save_img_and_predicted_mask(basename: str, img, pred_mask, target_mask=None):
+def save_img_and_predicted_mask(
+    basename: str,
+    img_filename: str,
+    img: torch.Tensor,
+    pred_masks: list[torch.Tensor],
+    target_masks: Optional[list[torch.Tensor]] = None,
+):
     # Datasets yield images with values in [-0.5, 0.5]. Convert these to [0, 1]
     # as required by `to_pil_image`.
     img = img + 0.5
 
+    shutil.copyfile(img_filename, f"{basename}_input.png")
+
     pil_img = to_pil_image(img)
-    pil_img.save(f"{basename}_input.png")
+    pil_img.save(f"{basename}_input_scaled.png")
 
-    pil_pred_mask = to_pil_image(pred_mask)
-    pil_pred_mask.save(f"{basename}_pred_mask.png")
+    for i, pred_mask in enumerate(pred_masks):
+        pil_pred_mask = to_pil_image(pred_mask)
+        pil_pred_mask.save(f"{basename}_pred_mask_{i}.png")
 
-    if target_mask is not None:
-        pil_target_mask = to_pil_image(target_mask)
-        pil_target_mask.save(f"{basename}_mask.png")
+    if target_masks is not None:
+        for i, target_mask in enumerate(target_masks):
+            pil_target_mask = to_pil_image(target_mask)
+            pil_target_mask.save(f"{basename}_mask_{i}.png")
+
+
+LossFunc = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 
 
 def train(
@@ -42,31 +59,37 @@ def train(
     device: torch.device,
     dataloader: DataLoader,
     model: DetectionModel,
-    loss_fn,
-    optimizer,
+    loss_fn: LossFunc,
+    optimizer: torch.optim.Optimizer,
+    save_debug_images=False,
 ):
     model.train()
 
     train_iterable = tqdm(dataloader)
-    train_iterable.set_description(f"Epoch {epoch}")
+    train_iterable.set_description(f"Training (epoch {epoch})")
 
     train_loss = 0.0
 
-    for batch_idx, (img_fname, img, mask) in enumerate(train_iterable):
+    for batch_idx, (img_fname, img, masks) in enumerate(train_iterable):
         img = img.to(device)
-        mask = mask.to(device)
+        masks = masks.to(device)
         start = time.time()
 
-        pred_mask = model(img)
+        pred_masks = model(img)
 
-        loss = loss_fn(pred_mask, mask)
+        loss = loss_fn(pred_masks, masks)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        train_loss += loss.item()
 
         time_per_img = (time.time() - start) / img.shape[0]
-        train_loss += loss
-        save_img_and_predicted_mask("train-sample", img[0], pred_mask[0], mask[0])
+
+        if save_debug_images:
+            save_img_and_predicted_mask(
+                "train-sample", img_fname[0], img[0], pred_masks[0], masks[0]
+            )
+
         train_iterable.set_postfix({"loss": loss.item(), "sec/img": time_per_img})
 
     train_iterable.clear()
@@ -75,21 +98,36 @@ def train(
     return train_loss
 
 
-def test(device: torch.device, dataloader: DataLoader, model: DetectionModel, loss_fn):
+def test(
+    device: torch.device,
+    dataloader: DataLoader,
+    model: DetectionModel,
+    loss_fn: LossFunc,
+    save_debug_images=False,
+):
     model.eval()
 
     test_loss = 0.0
     n_batches = len(dataloader)
 
+    test_iterable = tqdm(dataloader)
+    test_iterable.set_description(f"Testing")
+
     with torch.inference_mode():
-        for img_fname, img, mask in dataloader:
+        for img_fname, img, masks in test_iterable:
             img = img.to(device)
-            mask = mask.to(device)
+            masks = masks.to(device)
 
-            pred_mask = model(img)
+            pred_masks = model(img)
 
-            test_loss += loss_fn(pred_mask, mask).item()
-            save_img_and_predicted_mask("test-sample", img[0], pred_mask[0], mask[0])
+            test_loss += loss_fn(pred_masks, masks).item()
+
+            if save_debug_images:
+                save_img_and_predicted_mask(
+                    "test-sample", img_fname[0], img[0], pred_masks[0], masks[0]
+                )
+
+    test_iterable.clear()
 
     test_loss /= n_batches
     return test_loss
@@ -121,6 +159,11 @@ def main():
     parser.add_argument("data_dir")
     parser.add_argument("--batch-size", type=int, default=4, help="Batch size")
     parser.add_argument("--checkpoint", type=str, help="Model checkpoint to load")
+    parser.add_argument(
+        "--debug-images",
+        action="store_true",
+        help="Save debugging images during training",
+    )
     parser.add_argument(
         "--max-images", type=int, help="Maximum number of images to load"
     )
@@ -163,7 +206,11 @@ def main():
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = DetectionModel().to(device)
+
+    # TODO - Adjust weighting of loss here to reflect class imbalances,
+    # especially for the outline mask.
     loss_fn = torch.nn.BCELoss()
+
     optimizer = torch.optim.Adam(model.parameters())
 
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -179,8 +226,18 @@ def main():
         epoch = checkpoint["epoch"]
 
     while True:
-        train_loss = train(epoch, device, train_dataloader, model, loss_fn, optimizer)
-        val_loss = test(device, val_dataloader, model, loss_fn)
+        train_loss = train(
+            epoch,
+            device,
+            train_dataloader,
+            model,
+            loss_fn,
+            optimizer,
+            save_debug_images=args.debug_images,
+        )
+        val_loss = test(
+            device, val_dataloader, model, loss_fn, save_debug_images=args.debug_images
+        )
         print(
             f"Epoch {epoch} train loss {train_loss:.4f} validation loss {val_loss:.4f}"
         )

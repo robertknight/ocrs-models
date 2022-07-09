@@ -101,8 +101,12 @@ class DetectionModel(nn.Module):
         self.up2 = Up(depth_scale[2], depth_scale[1])
         self.up1 = Up(depth_scale[1], depth_scale[0])
 
+        # Number of output masks to generate
+        n_masks = 1
+
         self.final = nn.Sequential(
-            nn.Conv2d(depth_scale[0], 1, kernel_size=1, padding="same"), nn.Sigmoid()
+            nn.Conv2d(depth_scale[0], n_masks, kernel_size=1, padding="same"),
+            nn.Sigmoid(),
         )
 
     def forward(self, x):
