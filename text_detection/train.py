@@ -14,7 +14,7 @@ from tqdm import tqdm
 from .datasets import DDI100, HierText
 from .model import DetectionModel
 
-mask_height = 400
+mask_height = 500
 mask_width = int(mask_height * 0.75)
 mask_size = (mask_height, mask_width)
 """
