@@ -9,6 +9,7 @@ numpy = "*"
 torchvision = "*"
 pillow = "*"
 tqdm = "*"
+opencv-python = "*"
 
 [dev-packages]
 black = "*"
