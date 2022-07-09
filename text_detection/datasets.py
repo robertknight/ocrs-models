@@ -54,33 +54,12 @@ def generate_mask(width: int, height: int, polys: list[Polygon]) -> torch.Tensor
             width=1,
         )
 
-    outline_img = Image.new("1", (width, height), 0)
-    draw = ImageDraw.Draw(outline_img)
-    for poly in polys:
-        # `draw.line` is much faster than `draw.polygon` with an empty fill.
-        poly_lines = poly.copy()
-        poly_lines.append(poly_lines[0])
-        draw.line(
-            poly_lines,
-            fill="white",
-            # Make the line thick so that it is still visible if the mask is
-            # resized to a smaller size by the dataset's transforms.
-            #
-            # TODO - Make the width dynamic depending on the input size reduction
-            # factor.
-            width=4,
-        )
-
     # Use numpy to convert the mask from bool -> float rather than PyTorch to
     # work around https://github.com/pytorch/pytorch/issues/54789. This caused
     # True values to be mapped to 255.0 instead of 1.0 on Linux (but not macOS).
     text_mask_ary = np.array(text_mask_img, dtype="float32")
-    outline_mask_ary = np.array(outline_img, dtype="float32")
 
-    text_mask = torch.Tensor(text_mask_ary)
-    outline_mask = torch.Tensor(outline_mask_ary)
-
-    return torch.stack([text_mask, outline_mask])
+    return torch.Tensor(text_mask_ary)
 
 
 class DDI100Unpickler(pickle.Unpickler):
@@ -164,7 +143,9 @@ class DDI100(Dataset):
             word_quads = [w["box"] for w in words]
 
         _, height, width = img.shape
+
         mask = self._generate_mask(width, height, word_quads)
+        mask = torch.unsqueeze(mask, 0)  # Add channel dimension
 
         if self.transform:
             img = self.transform(img)
@@ -256,13 +237,11 @@ class HierText(Dataset):
         _, height, width = img.shape
 
         mask = generate_mask(width, height, word_polys)
+        mask = torch.unsqueeze(mask, 0)  # Add channel dimension
 
         if self.transform:
             img = self.transform(img)
             mask = self.transform(mask)
-
-            # Sharpen the mask
-            mask = torch.where(mask > 0.0, 1.0, 0.0)
 
         return img_path, img, mask
 

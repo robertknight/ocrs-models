@@ -54,22 +54,12 @@ def main():
     binary_mask = resize(
         binary_mask, (input_height, input_width), InterpolationMode.NEAREST
     )
-
     text_mask = binary_mask[0]
-    line_mask = binary_mask[1]
-
     text_regions = (input_img.float() / 255.0) * text_mask
-
-    # Highlight bottom lines of words
-    print("line mask shape", line_mask.shape, line_mask)
-    print("text regions shape", text_regions.shape)
-    text_regions = text_regions.masked_fill(line_mask > threshold, 0.5)
 
     to_pil_image(text_regions).save(f"{args.out_basename}-text-regions.png")
     to_pil_image(pred_masks[0]).save(f"{args.out_basename}-text-probs.png")
-    to_pil_image(pred_masks[1]).save(f"{args.out_basename}-line-probs.png")
     to_pil_image(text_mask).save(f"{args.out_basename}-text-mask.png")
-    to_pil_image(line_mask).save(f"{args.out_basename}-line-mask.png")
 
 
 if __name__ == "__main__":
