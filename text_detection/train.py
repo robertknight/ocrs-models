@@ -191,7 +191,7 @@ def main():
                     transforms.ColorJitter(brightness=0.1, contrast=0.1),
                     transforms.RandomAffine(degrees=5, scale=(0.8, 1.2), shear=5),
                     transforms.RandomPerspective(distortion_scale=0.1, p=1.0),
-                    transforms.RandomCrop(size=600),
+                    transforms.RandomCrop(size=600, pad_if_needed=True),
                 ]
             )
         ],
