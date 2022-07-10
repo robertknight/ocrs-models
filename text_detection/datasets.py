@@ -155,8 +155,9 @@ class DDI100(Dataset):
         mask = torch.unsqueeze(mask, 0)  # Add channel dimension
 
         if self.transform:
-            img = self.transform(img)
-            mask = self.transform(mask)
+            transformed = self.transform(torch.stack([img, mask]))
+            img = transformed[0]
+            mask = transformed[1]
 
         return img_path, img, mask
 
@@ -247,8 +248,9 @@ class HierText(Dataset):
         mask = torch.unsqueeze(mask, 0)  # Add channel dimension
 
         if self.transform:
-            img = self.transform(img)
-            mask = self.transform(mask)
+            transformed = self.transform(torch.stack([img, mask]))
+            img = transformed[0]
+            mask = transformed[1]
 
         return img_path, img, mask
 
