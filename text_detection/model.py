@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 import torch
 from torch import nn
 
@@ -85,45 +87,87 @@ class Up(nn.Module):
         return self.contract(combined)
 
 
+def binarize(
+    pred_mask: torch.Tensor, thresh_mask: torch.Tensor, k: float = 50
+) -> torch.Tensor:
+    """
+    Differentiable Binarization function, from https://arxiv.org/abs/1911.08947.
+
+    :param pred_mask: B1HW tensor of binary class probabilities
+    :param thresh_mask: B1HW tensor of thresholds
+    :param k: Amplifying factor (see eqn 2 of paper). Defaults to the value of
+      50 given in the paper.
+    :return: B1HW tensor of binary class probabilities
+    """
+    return (k * (pred_mask - thresh_mask)).sigmoid()
+
+
 class DetectionModel(nn.Module):
     """
     Text detection model.
 
-    This uses a U-Net-like architecture. See https://arxiv.org/abs/1505.04597.
+    This uses a U-Net architecture (https://arxiv.org/abs/1505.04597) for
+    feature extraction and upsampling, coupled with a Differentiable
+    Binarization (https://arxiv.org/abs/2202.10304) head.
 
-    It expects a greyscale image as input and outputs a text/not-text
-    segmentation mask.
+    The model expects a greyscale image as input and outputs a text/not-text
+    segmentation mask during inference. During training it also outputs a
+    post-binarization and binarization threshold masks (see DB paper).
     """
 
-    def __init__(self):
+    def __init__(self, eval_only=False):
+        """
+        :param eval_only: If true, configure the model for inference only.
+          Params used only during training will be excluded. When loading a
+          saved state dict, the dict will need to be prepared using
+          `get_eval_only_state`.
+        """
         super().__init__()
 
-        # Number of feature channels at each size level in the network.
+        # Number of feature channels at each level in the network.
         #
         # The U-Net paper uses 64 for the first level. This model uses a
         # reduced scale to cut down the parameter count.
-        #
-        # depth_scale = [64, 128, 256, 512, 1024]
-        depth_scale = [8, 16, 32, 32, 64, 128, 256]
-        self.depth_scale = depth_scale
+        width_scale = [8, 16, 32, 32, 64, 128, 256]
+        self.depth_scale = width_scale
 
-        self.in_conv = DoubleConv(1, depth_scale[0])
+        # Feature extraction and upsampling network.
+        self.in_conv = DoubleConv(1, width_scale[0])
 
         self.down = nn.ModuleList()
-        for i in range(len(depth_scale) - 1):
-            self.down.append(Down(depth_scale[i], depth_scale[i + 1]))
+        for i in range(len(width_scale) - 1):
+            self.down.append(Down(width_scale[i], width_scale[i + 1]))
 
         self.up = nn.ModuleList()
-        for i in range(len(depth_scale) - 1):
-            self.up.append(Up(depth_scale[i + 1], depth_scale[i], depth_scale[i]))
+        for i in range(len(width_scale) - 1):
+            self.up.append(Up(width_scale[i + 1], width_scale[i], width_scale[i]))
 
-        n_masks = 1  # Output masks to generate
-        self.out_conv = nn.Sequential(
-            nn.Conv2d(depth_scale[0], n_masks, kernel_size=1, padding="same"),
+        # Head for text/not-text probability mask.
+        self.prob_head = nn.Sequential(
+            nn.Conv2d(width_scale[0], width_scale[0], kernel_size=1, padding="same"),
+            nn.ReLU(),
+            nn.Conv2d(width_scale[0], width_scale[0], kernel_size=1, padding="same"),
+            nn.ReLU(),
+            nn.Conv2d(width_scale[0], 1, kernel_size=1, padding="same"),
             nn.Sigmoid(),
         )
 
-    def forward(self, x: torch.Tensor):
+        # Head for binarization threshold mask.
+        if not eval_only:
+            self.thresh_head = nn.Sequential(
+                nn.Conv2d(
+                    width_scale[0], width_scale[0], kernel_size=1, padding="same"
+                ),
+                nn.ReLU(),
+                nn.Conv2d(
+                    width_scale[0], width_scale[0], kernel_size=1, padding="same"
+                ),
+                nn.ReLU(),
+                nn.Conv2d(width_scale[0], 1, kernel_size=1, padding="same"),
+                nn.Sigmoid(),
+            )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.in_conv(x)
 
         x_down: list[torch.Tensor] = []
@@ -135,4 +179,29 @@ class DetectionModel(nn.Module):
         for i, up_op in reversed(list(enumerate(self.up))):
             x_up = up_op(x_up, x if i == 0 else x_down[i - 1])
 
-        return self.out_conv(x_up)
+        prob_mask = self.prob_head(x_up)
+        if not self.training:
+            return prob_mask
+
+        thresh_mask = self.thresh_head(x_up)
+
+        k_factor = 10
+        # k_factor = 50.
+        bin_mask = binarize(prob_mask, thresh_mask, k=k_factor)
+        return torch.cat([prob_mask, bin_mask, thresh_mask], dim=1)
+
+    @staticmethod
+    def get_eval_only_state(
+        state_dict: OrderedDict[str, torch.Tensor]
+    ) -> OrderedDict[str, torch.Tensor]:
+        """
+        Strip training-only params from a saved model.
+
+        Return a copy of `state_dict` with params that are not used in eval-only
+        mode removed.
+        """
+        result = state_dict.copy()
+        for key in list(result.keys()):
+            if key.startswith("thresh_head."):
+                del result[key]
+        return result

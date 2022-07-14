@@ -18,6 +18,7 @@ from .model import DetectionModel
 from .postprocess import box_match_metrics, extract_cc_quads
 
 mask_height = 800
+# mask_height = 200
 mask_width = int(mask_height * 0.75)
 mask_size = (mask_height, mask_width)
 """
@@ -36,8 +37,8 @@ def save_img_and_predicted_mask(
     basename: str,
     img_filename: str,
     img: torch.Tensor,
-    pred_masks: list[torch.Tensor],
-    target_masks: Optional[list[torch.Tensor]] = None,
+    pred_masks: torch.Tensor,
+    target_masks: Optional[torch.Tensor] = None,
 ):
     # Datasets yield images with values in [-0.5, 0.5]. Convert these to [0, 1]
     # as required by `to_pil_image`.
@@ -48,17 +49,59 @@ def save_img_and_predicted_mask(
     pil_img = to_pil_image(img)
     pil_img.save(f"{basename}_input_scaled.png")
 
-    for i, pred_mask in enumerate(pred_masks):
-        pil_pred_mask = to_pil_image(pred_mask)
-        pil_pred_mask.save(f"{basename}_pred_mask_{i}.png")
+    n_masks = pred_masks.shape[0]
+    for i in range(n_masks):
+        pil_pred_mask = to_pil_image(pred_masks[i])
+        pil_pred_mask.save(f"{basename}_pred_{i}.png")
 
     if target_masks is not None:
-        for i, target_mask in enumerate(target_masks):
-            pil_target_mask = to_pil_image(target_mask)
-            pil_target_mask.save(f"{basename}_mask_{i}.png")
+        n_target_masks = target_masks.shape[0]
+        for i in range(n_target_masks):
+            pil_target_mask = to_pil_image(target_masks[i])
+            pil_target_mask.save(f"{basename}_target_{i}.png")
 
 
-LossFunc = Callable[[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]
+def text_mask_loss(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    border_mask: torch.Tensor,
+) -> torch.Tensor:
+    """
+    Compute loss for text detection masks.
+
+    `pred` and `target` may have one or two channels. The first channel is
+    the text probability mask. The second, if present, is the approximate
+    binary mask.
+
+    :param pred: NCHW tensor of predicted masks
+    :param target: NCHW tensor of target masks
+    :param border_mask: N1HW tensor of border regions of text instances, used to adjust loss weights
+    """
+
+    # Create weight map, assigning higher weight to losses around borders of
+    # text instances.
+    batch_size, _, height, width = pred.shape
+    weights = (
+        torch.full((batch_size, height, width), fill_value=0.5, device=pred.device)
+        + border_mask[:, 0]
+    )
+
+    # Compute loss for text probability mask.
+    pred_prob = pred[:, 0]
+    target_prob = target[:, 0]
+    prob_loss = F.binary_cross_entropy(pred_prob, target_prob, weights)
+
+    pred_channels = pred.shape[1]
+    if pred_channels == 1:
+        return prob_loss
+
+    # Compute loss for approximate binary mask.
+    pred_bin = pred[:, 1]
+    target_bin = target[:, 1]
+    bin_loss = F.binary_cross_entropy(pred_bin, target_bin, weights)
+
+    # Compute mean losses per pixel in [0, 1].
+    return torch.stack([prob_loss, bin_loss]).mean()
 
 
 def train(
@@ -66,7 +109,6 @@ def train(
     device: torch.device,
     dataloader: DataLoader,
     model: DetectionModel,
-    loss_fn: LossFunc,
     optimizer: torch.optim.Optimizer,
     save_debug_images=False,
 ):
@@ -88,9 +130,18 @@ def train(
         border_masks = border_masks.to(device)
         start = time.time()
 
+        # Duplicate binary mask along channel axis so we can use it as a target
+        # for both the probability and binary masks.
+        target_masks = torch.cat([masks, masks], dim=1)
+
         pred_masks = model(img)
 
-        loss = loss_fn(pred_masks, masks, border_masks)
+        # Extract the first two masks (probs, binary class) from the
+        # three masks returned (probs, bin class, threshold map).
+        prob_bin_masks = pred_masks[:, 0:2]
+
+        loss = text_mask_loss(prob_bin_masks, target_masks, border_masks)
+
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -99,12 +150,9 @@ def train(
         time_per_img = (time.time() - start) / img.shape[0]
 
         if save_debug_images:
+            # TODO - Visualize all of the masks
             save_img_and_predicted_mask(
-                "train-sample",
-                img_fname[0],
-                img[0],
-                pred_masks[0],
-                [masks[0], border_masks[0]],
+                "train-sample", img_fname[0], img[0], pred_masks[0], masks[0]
             )
 
         train_iterable.set_postfix({"loss": loss.item(), "sec/img": time_per_img})
@@ -144,7 +192,6 @@ def test(
     device: torch.device,
     dataloader: DataLoader,
     model: DetectionModel,
-    loss_fn: LossFunc,
     save_debug_images=False,
 ) -> tuple[float, dict[str, float]]:
     """
@@ -174,7 +221,7 @@ def test(
 
             pred_masks = model(img)
 
-            test_loss += loss_fn(pred_masks, masks, border_masks).item()
+            test_loss += text_mask_loss(pred_masks, masks, border_masks).item()
 
             for item_index, pred_mask in enumerate(pred_masks):
                 pred_quads = extract_cc_quads(binarize_mask(pred_mask).cpu())
@@ -307,10 +354,6 @@ def main():
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = DetectionModel().to(device)
 
-    def loss_fn(pred, target, border_mask):
-        weights = torch.full(pred.shape, fill_value=0.5, device=device) + border_mask
-        return F.binary_cross_entropy(pred, target, weights)
-
     optimizer = torch.optim.Adam(model.parameters())
 
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -333,7 +376,7 @@ def main():
             )
 
         val_loss, val_metrics = test(
-            device, val_dataloader, model, loss_fn, save_debug_images=args.debug_images
+            device, val_dataloader, model, save_debug_images=args.debug_images
         )
         print(f"Validation loss {val_loss:.4f}")
         print("Validation metrics:", format_metrics(val_metrics))
@@ -345,12 +388,14 @@ def main():
             device,
             train_dataloader,
             model,
-            loss_fn,
             optimizer,
             save_debug_images=args.debug_images,
         )
         val_loss, val_metrics = test(
-            device, val_dataloader, model, loss_fn, save_debug_images=args.debug_images
+            device,
+            val_dataloader,
+            model,
+            save_debug_images=args.debug_images,
         )
         print(
             f"Epoch {epoch} train loss {train_loss:.4f} validation loss {val_loss:.4f}"
