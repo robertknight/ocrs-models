@@ -85,6 +85,19 @@ class Up(nn.Module):
         return self.contract(combined)
 
 
+def binarize(pred_mask: torch.Tensor, thresh_mask: torch.Tensor, k: float = 50):
+    """
+    Differentiable Binarization function, from https://arxiv.org/abs/1911.08947.
+
+    :param pred_mask: B1HW tensor of binary class probabilities
+    :param thresh_mask: B1HW tensor of thresholds
+    :param k: Amplifying factor (see eqn 2 of paper). Defaults to the value of
+      50 given in the paper.
+    :return: B1HW tensor of binary class probabilities
+    """
+    return (k * (pred_mask - thresh_mask)).sigmoid()
+
+
 class DetectionModel(nn.Module):
     """
     Text detection model.
@@ -117,13 +130,15 @@ class DetectionModel(nn.Module):
         for i in range(len(depth_scale) - 1):
             self.up.append(Up(depth_scale[i + 1], depth_scale[i], depth_scale[i]))
 
-        n_masks = 1  # Output masks to generate
+        n_masks = 2  # Output masks to generate
         self.out_conv = nn.Sequential(
             nn.Conv2d(depth_scale[0], n_masks, kernel_size=1, padding="same"),
             nn.Sigmoid(),
         )
 
-    def forward(self, x: torch.Tensor):
+        self.apply(init_weights)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.in_conv(x)
 
         x_down = []
@@ -135,4 +150,14 @@ class DetectionModel(nn.Module):
         for i, up_op in reversed(list(enumerate(self.up))):
             x_up = up_op(x_up, x if i == 0 else x_down[i - 1])
 
-        return self.out_conv(x_up)
+        # TODO - Skip prediction of threshold mask and binarization step at
+        # inference time.
+
+        masks = self.out_conv(x_up)
+        pred_mask = masks[:, 0:1]  # B x 1 x H x W
+        threshold_mask = masks[:, 1:2]  # B x 1 x H x W
+
+        k_factor = 5.0
+        # k_factor = 50.
+        bin_mask = binarize(pred_mask, threshold_mask, k=k_factor)
+        return torch.cat([pred_mask, bin_mask, threshold_mask], dim=1)
