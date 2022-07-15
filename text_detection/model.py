@@ -130,13 +130,22 @@ class DetectionModel(nn.Module):
         for i in range(len(depth_scale) - 1):
             self.up.append(Up(depth_scale[i + 1], depth_scale[i], depth_scale[i]))
 
-        n_masks = 2  # Output masks to generate
-        self.out_conv = nn.Sequential(
-            nn.Conv2d(depth_scale[0], n_masks, kernel_size=1, padding="same"),
+        self.prob_head = nn.Sequential(
+            nn.Conv2d(depth_scale[0], depth_scale[0], kernel_size=1, padding="same"),
+            nn.ReLU(),
+            nn.Conv2d(depth_scale[0], depth_scale[0], kernel_size=1, padding="same"),
+            nn.ReLU(),
+            nn.Conv2d(depth_scale[0], 1, kernel_size=1, padding="same"),
             nn.Sigmoid(),
         )
-
-        self.apply(init_weights)
+        self.thresh_head = nn.Sequential(
+            nn.Conv2d(depth_scale[0], depth_scale[0], kernel_size=1, padding="same"),
+            nn.ReLU(),
+            nn.Conv2d(depth_scale[0], depth_scale[0], kernel_size=1, padding="same"),
+            nn.ReLU(),
+            nn.Conv2d(depth_scale[0], 1, kernel_size=1, padding="same"),
+            nn.Sigmoid(),
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.in_conv(x)
@@ -153,11 +162,10 @@ class DetectionModel(nn.Module):
         # TODO - Skip prediction of threshold mask and binarization step at
         # inference time.
 
-        masks = self.out_conv(x_up)
-        pred_mask = masks[:, 0:1]  # B x 1 x H x W
-        threshold_mask = masks[:, 1:2]  # B x 1 x H x W
+        prob_mask = self.prob_head(x_up)
+        thresh_mask = self.thresh_head(x_up)
 
-        k_factor = 5.0
+        k_factor = 10
         # k_factor = 50.
-        bin_mask = binarize(pred_mask, threshold_mask, k=k_factor)
-        return torch.cat([pred_mask, bin_mask, threshold_mask], dim=1)
+        bin_mask = binarize(prob_mask, thresh_mask, k=k_factor)
+        return torch.cat([prob_mask, bin_mask, thresh_mask], dim=1)

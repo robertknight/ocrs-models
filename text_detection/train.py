@@ -15,8 +15,8 @@ from tqdm import tqdm
 from .datasets import DDI100, HierText
 from .model import DetectionModel
 
-# mask_height = 800
-mask_height = 200
+mask_height = 800
+# mask_height = 200
 mask_width = int(mask_height * 0.75)
 mask_size = (mask_height, mask_width)
 """
@@ -258,9 +258,7 @@ def main():
         target_bin = target[:, 1]
         bin_loss = F.binary_cross_entropy(pred_bin, target_bin)
 
-        # print('Prob loss', prob_loss, 'bin loss', bin_loss)
-
-        return prob_loss + bin_loss
+        return torch.stack([prob_loss, bin_loss]).mean()
 
     optimizer = torch.optim.Adam(model.parameters())
 
