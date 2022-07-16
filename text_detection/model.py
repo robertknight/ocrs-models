@@ -170,7 +170,7 @@ class DetectionModel(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.in_conv(x)
 
-        x_down = []
+        x_down: list[nn.Module] = []
         for i, down_op in enumerate(self.down):
             prev_down = x if i == 0 else x_down[-1]
             x_down.append(down_op(prev_down))
