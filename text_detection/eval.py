@@ -49,7 +49,7 @@ def main():
     print(f"Predicted text in {end - start:.2f}s", file=sys.stderr)
 
     pred_masks = pred_masks[0]  # Remove dummy batch dimension
-    threshold = 0.3
+    threshold = 0.5
     binary_mask = binarize_mask(pred_masks, threshold=threshold)
     binary_mask = resize(
         binary_mask, (input_height, input_width), InterpolationMode.NEAREST
