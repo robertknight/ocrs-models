@@ -20,7 +20,7 @@ class DepthwiseConv(nn.Module):
             nn.ReLU(),
         )
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.seq(x)
 
 
@@ -33,7 +33,7 @@ class DoubleConv(nn.Module):
             DepthwiseConv(out_channels, out_channels),
         )
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.seq(x)
 
 
@@ -50,7 +50,7 @@ class Down(nn.Module):
             nn.MaxPool2d(kernel_size=2),
         )
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.seq(x)
 
 
@@ -74,7 +74,7 @@ class Up(nn.Module):
         )
         self.contract = DoubleConv(out_channels + in_cross_channels, out_channels)
 
-    def forward(self, x_to_upscale: torch.Tensor, x: torch.Tensor):
+    def forward(self, x_to_upscale: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
         upscaled = self.up(x_to_upscale)
         pad_r = x.shape[3] - upscaled.shape[3]
         pad_b = x.shape[2] - upscaled.shape[2]
