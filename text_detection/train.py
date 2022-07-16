@@ -136,17 +136,9 @@ def test(
             img = img.to(device)
             masks = masks.to(device)
 
-            # Duplicate binary mask along channel axis so we can use it as a target
-            # for both the probability and binary masks.
-            duped_masks = torch.cat([masks, masks], dim=1)
-
             pred_masks = model(img)
 
-            # Extract the first two masks (probs, binary class) from the
-            # three masks returned (probs, bin class, threshold map).
-            prob_bin_masks = pred_masks[:, 0:2]
-
-            test_loss += loss_fn(prob_bin_masks, duped_masks).item()
+            test_loss += loss_fn(pred_masks, masks).item()
 
             if save_debug_images:
                 save_img_and_predicted_mask(
@@ -248,16 +240,21 @@ def main():
 
     # TODO - Adjust weighting of loss here to reflect class imbalances,
     # especially for the outline mask.
-    # loss_fn = torch.nn.BCELoss()
     def loss_fn(pred, target):
+        pred_channels = pred.shape[1]
         pred_prob = pred[:, 0]
         target_prob = target[:, 0]
         prob_loss = F.binary_cross_entropy(pred_prob, target_prob)
 
+        # In inference mode, there is only a probability mask.
+        if pred_channels == 1:
+            return prob_loss
+
+        # During training the outputs are a probability mask and
+        # post-binarization mask, with the same targets.
         pred_bin = pred[:, 1]
         target_bin = target[:, 1]
         bin_loss = F.binary_cross_entropy(pred_bin, target_bin)
-
         return torch.stack([prob_loss, bin_loss]).mean()
 
     optimizer = torch.optim.Adam(model.parameters())

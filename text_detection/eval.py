@@ -22,11 +22,12 @@ def main():
     parser.add_argument("out_basename")
     args = parser.parse_args()
 
-    model = DetectionModel()
+    model = DetectionModel(eval_only=True)
     model.eval()
 
     checkpoint = torch.load(args.model, map_location=torch.device("cpu"))
-    model.load_state_dict(checkpoint["model_state"])
+    model_state = DetectionModel.get_eval_only_state(checkpoint["model_state"])
+    model.load_state_dict(model_state)
 
     input_img = read_image(args.image, ImageReadMode.GRAY)
     _, input_height, input_width = input_img.shape
@@ -54,12 +55,35 @@ def main():
     binary_mask = resize(
         binary_mask, (input_height, input_width), InterpolationMode.NEAREST
     )
-    text_mask = binary_mask[0]
-    text_regions = (input_img.float() / 255.0) * text_mask
 
-    to_pil_image(text_regions).save(f"{args.out_basename}-text-regions.png")
-    to_pil_image(pred_masks[0]).save(f"{args.out_basename}-text-probs.png")
-    to_pil_image(text_mask).save(f"{args.out_basename}-text-mask.png")
+    text_prob_mask = binary_mask[0]
+    text_prob_regions = (input_img.float() / 255.0) * text_prob_mask
+
+    to_pil_image(text_prob_regions).save(f"{args.out_basename}-prob-regions.png")
+    to_pil_image(text_prob_mask).save(f"{args.out_basename}-prob-mask.png")
+
+    prob_pred = pred_masks[0]
+    to_pil_image(prob_pred).save(f"{args.out_basename}-prob-pred.png")
+
+    # By default the model only outputs the probability mask during inference.
+    # If binary and threshold mask output has also been enabled, then save those.
+    #
+    # The binary mask is trained with the same supervision as the probability
+    # mask, so it should be almost identical.
+    if len(pred_masks) > 1:
+        text_bin_mask = binary_mask[1]
+        text_bin_regions = (input_img.float() / 255.0) * text_bin_mask
+        bin_prob_diff = text_prob_mask.logical_xor(text_bin_mask).float()
+
+        to_pil_image(text_bin_regions).save(f"{args.out_basename}-bin-regions.png")
+        to_pil_image(text_bin_mask).save(f"{args.out_basename}-bin-mask.png")
+        to_pil_image(bin_prob_diff).save(f"{args.out_basename}-prob-bin-diff.png")
+
+        bin_pred = pred_masks[1]
+        to_pil_image(bin_pred).save(f"{args.out_basename}-bin-pred.png")
+
+        thresh_pred = pred_masks[2]
+        to_pil_image(thresh_pred).save(f"{args.out_basename}-thresh-pred.png")
 
 
 if __name__ == "__main__":
