@@ -6,6 +6,7 @@ import pickle
 import pickletools
 from typing import Callable, TextIO, cast
 
+import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 from tqdm import tqdm
@@ -44,8 +45,8 @@ def generate_mask(width: int, height: int, polys: list[Polygon]) -> torch.Tensor
     :param height: Height of output image
     :param polys: List of polygons to draw on the mask.
     """
-    text_mask_img = Image.new("1", (width, height), 0)
-    draw = ImageDraw.Draw(text_mask_img)
+    mask_img = Image.new("1", (width, height), 0)
+    draw = ImageDraw.Draw(mask_img)
     for poly in polys:
         draw.polygon(
             poly,
@@ -57,9 +58,15 @@ def generate_mask(width: int, height: int, polys: list[Polygon]) -> torch.Tensor
     # Use numpy to convert the mask from bool -> float rather than PyTorch to
     # work around https://github.com/pytorch/pytorch/issues/54789. This caused
     # True values to be mapped to 255.0 instead of 1.0 on Linux (but not macOS).
-    text_mask_ary = np.array(text_mask_img, dtype="float32")
+    mask = np.array(mask_img, dtype=np.float32)
 
-    return torch.Tensor(text_mask_ary)
+    # Erode the mask. This has the same effect as shrinking the input polygons,
+    # and serves to make it easier to separate adjacent regions in prediction
+    # outputs.
+    kernel = np.ones((3, 3), dtype=np.float32)
+    mask = cv2.erode(mask, kernel, iterations=2)
+
+    return torch.Tensor(mask)
 
 
 class DDI100Unpickler(pickle.Unpickler):
@@ -148,8 +155,11 @@ class DDI100(Dataset):
         mask = torch.unsqueeze(mask, 0)  # Add channel dimension
 
         if self.transform:
-            img = self.transform(img)
-            mask = self.transform(mask)
+            # Input and target are transformed in one call to ensure same
+            # parameters are used for both, if transform is randomized.
+            transformed = self.transform(torch.stack([img, mask]))
+            img = transformed[0]
+            mask = transformed[1]
 
         return img_path, img, mask
 
@@ -240,8 +250,11 @@ class HierText(Dataset):
         mask = torch.unsqueeze(mask, 0)  # Add channel dimension
 
         if self.transform:
-            img = self.transform(img)
-            mask = self.transform(mask)
+            # Input and target are transformed in one call to ensure same
+            # parameters are used for both, if transform is randomized.
+            transformed = self.transform(torch.stack([img, mask]))
+            img = transformed[0]
+            mask = transformed[1]
 
         return img_path, img, mask
 

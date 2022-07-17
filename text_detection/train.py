@@ -8,13 +8,13 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision.transforms.functional import resize, to_pil_image
-from torchvision.transforms import Resize
+import torchvision.transforms as transforms
 from tqdm import tqdm
 
 from .datasets import DDI100, HierText
 from .model import DetectionModel
 
-mask_height = 400
+mask_height = 800
 mask_width = int(mask_height * 0.75)
 mask_size = (mask_height, mask_width)
 """
@@ -184,7 +184,20 @@ def main():
     else:
         validation_max_images = None
 
-    transform = nn.Sequential(Resize(mask_size))
+    augmentations = transforms.RandomApply(
+        [
+            transforms.RandomChoice(
+                [
+                    transforms.ColorJitter(brightness=0.1, contrast=0.1),
+                    transforms.RandomAffine(degrees=5, scale=(0.8, 1.2), shear=5),
+                    transforms.RandomPerspective(distortion_scale=0.1, p=1.0),
+                    transforms.RandomCrop(size=600, pad_if_needed=True),
+                ]
+            )
+        ],
+        p=0.5,
+    )
+    transform = transforms.Compose([augmentations, transforms.Resize(mask_size)])
 
     train_dataset = load_dataset(
         args.data_dir, transform=transform, train=True, max_images=max_images
