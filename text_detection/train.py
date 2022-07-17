@@ -74,6 +74,7 @@ def train(
     for batch_idx, (img_fname, img, masks, border_masks) in enumerate(train_iterable):
         img = img.to(device)
         masks = masks.to(device)
+        border_masks = border_masks.to(device)
         start = time.time()
 
         pred_masks = model(img)
@@ -122,6 +123,7 @@ def test(
         for img_fname, img, masks, border_masks in test_iterable:
             img = img.to(device)
             masks = masks.to(device)
+            border_masks = border_masks.to(device)
 
             pred_masks = model(img)
 
@@ -226,7 +228,7 @@ def main():
     model = DetectionModel().to(device)
 
     def loss_fn(pred, target, border_mask):
-        weights = torch.full(pred.shape, fill_value=0.5) + border_mask
+        weights = torch.full(pred.shape, fill_value=0.5, device=device) + border_mask
         return F.binary_cross_entropy(pred, target, weights)
 
     optimizer = torch.optim.Adam(model.parameters())
