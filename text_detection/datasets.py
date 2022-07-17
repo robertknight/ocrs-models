@@ -37,7 +37,9 @@ Polygon specified as a list of (x, y) coordinates of corners in clockwise order.
 """
 
 
-def generate_mask(width: int, height: int, polys: list[Polygon]) -> torch.Tensor:
+def generate_mask(
+    width: int, height: int, polys: list[Polygon]
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Generate a binary mask in CHW format from a set of bounding polygons.
 
@@ -60,13 +62,17 @@ def generate_mask(width: int, height: int, polys: list[Polygon]) -> torch.Tensor
     # True values to be mapped to 255.0 instead of 1.0 on Linux (but not macOS).
     mask = np.array(mask_img, dtype=np.float32)
 
+    kernel = np.ones((3, 3), dtype=np.float32)
+
     # Erode the mask. This has the same effect as shrinking the input polygons,
     # and serves to make it easier to separate adjacent regions in prediction
     # outputs.
-    kernel = np.ones((3, 3), dtype=np.float32)
-    mask = cv2.erode(mask, kernel, iterations=2)
+    eroded_mask = cv2.erode(mask, kernel, iterations=2)
 
-    return torch.Tensor(mask)
+    border_mask = cv2.dilate(mask, kernel, iterations=10)
+    border_mask = border_mask - eroded_mask
+
+    return (torch.Tensor(eroded_mask), torch.Tensor(border_mask))
 
 
 class DDI100Unpickler(pickle.Unpickler):
@@ -151,17 +157,19 @@ class DDI100(Dataset):
 
         _, height, width = img.shape
 
-        mask = self._generate_mask(width, height, word_quads)
+        mask, border_mask = generate_mask(width, height, word_quads)
         mask = torch.unsqueeze(mask, 0)  # Add channel dimension
+        border_mask = torch.unsqueeze(border_mask, 0)  # Add channel dimension
 
         if self.transform:
             # Input and target are transformed in one call to ensure same
             # parameters are used for both, if transform is randomized.
-            transformed = self.transform(torch.stack([img, mask]))
+            transformed = self.transform(torch.stack([img, mask, border_mask]))
             img = transformed[0]
             mask = transformed[1]
+            border_mask = transformed[2]
 
-        return img_path, img, mask
+        return img_path, img, mask, border_mask
 
     @staticmethod
     def _generate_mask(width: int, height: int, word_quads):
@@ -246,17 +254,19 @@ class HierText(Dataset):
         img = transform_image(read_image(img_path, ImageReadMode.GRAY))
         _, height, width = img.shape
 
-        mask = generate_mask(width, height, word_polys)
+        mask, border_mask = generate_mask(width, height, word_polys)
         mask = torch.unsqueeze(mask, 0)  # Add channel dimension
+        border_mask = torch.unsqueeze(border_mask, 0)  # Add channel dimension
 
         if self.transform:
             # Input and target are transformed in one call to ensure same
             # parameters are used for both, if transform is randomized.
-            transformed = self.transform(torch.stack([img, mask]))
+            transformed = self.transform(torch.stack([img, mask, border_mask]))
             img = transformed[0]
             mask = transformed[1]
+            border_mask = transformed[2]
 
-        return img_path, img, mask
+        return img_path, img, mask, border_mask
 
     @staticmethod
     def _generate_json_lines_annotations(annotations_file: str, lines_file: str):
@@ -309,7 +319,7 @@ if __name__ == "__main__":
 
     for i in range(len(dataset)):
         print(f"Processing image {i+1}...")
-        path, img, mask = dataset[i]
+        path, img, mask, border_mask = dataset[i]
 
         grey_img = untransform_image(img)
         rgb_img = grey_img.expand((3, grey_img.shape[1], grey_img.shape[2]))

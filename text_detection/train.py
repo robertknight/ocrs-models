@@ -6,6 +6,7 @@ from typing import Callable, Optional
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torchvision.transforms.functional import resize, to_pil_image
 import torchvision.transforms as transforms
@@ -51,7 +52,7 @@ def save_img_and_predicted_mask(
             pil_target_mask.save(f"{basename}_mask_{i}.png")
 
 
-LossFunc = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
+LossFunc = Callable[[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]
 
 
 def train(
@@ -70,14 +71,15 @@ def train(
 
     train_loss = 0.0
 
-    for batch_idx, (img_fname, img, masks) in enumerate(train_iterable):
+    for batch_idx, (img_fname, img, masks, border_masks) in enumerate(train_iterable):
         img = img.to(device)
         masks = masks.to(device)
+        border_masks = border_masks.to(device)
         start = time.time()
 
         pred_masks = model(img)
 
-        loss = loss_fn(pred_masks, masks)
+        loss = loss_fn(pred_masks, masks, border_masks)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -87,7 +89,11 @@ def train(
 
         if save_debug_images:
             save_img_and_predicted_mask(
-                "train-sample", img_fname[0], img[0], pred_masks[0], masks[0]
+                "train-sample",
+                img_fname[0],
+                img[0],
+                pred_masks[0],
+                [masks[0], border_masks[0]],
             )
 
         train_iterable.set_postfix({"loss": loss.item(), "sec/img": time_per_img})
@@ -114,13 +120,14 @@ def test(
     test_iterable.set_description(f"Testing")
 
     with torch.inference_mode():
-        for img_fname, img, masks in test_iterable:
+        for img_fname, img, masks, border_masks in test_iterable:
             img = img.to(device)
             masks = masks.to(device)
+            border_masks = border_masks.to(device)
 
             pred_masks = model(img)
 
-            test_loss += loss_fn(pred_masks, masks).item()
+            test_loss += loss_fn(pred_masks, masks, border_masks).item()
 
             if save_debug_images:
                 save_img_and_predicted_mask(
@@ -220,9 +227,9 @@ def main():
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = DetectionModel().to(device)
 
-    # TODO - Adjust weighting of loss here to reflect class imbalances,
-    # especially for the outline mask.
-    loss_fn = torch.nn.BCELoss()
+    def loss_fn(pred, target, border_mask):
+        weights = torch.full(pred.shape, fill_value=0.5, device=device) + border_mask
+        return F.binary_cross_entropy(pred, target, weights)
 
     optimizer = torch.optim.Adam(model.parameters())
 
