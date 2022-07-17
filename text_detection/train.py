@@ -16,6 +16,7 @@ from .datasets import DDI100, HierText
 from .model import DetectionModel
 
 mask_height = 800
+# mask_height = 200
 mask_width = int(mask_height * 0.75)
 mask_size = (mask_height, mask_width)
 """
@@ -30,8 +31,8 @@ def save_img_and_predicted_mask(
     basename: str,
     img_filename: str,
     img: torch.Tensor,
-    pred_masks: list[torch.Tensor],
-    target_masks: Optional[list[torch.Tensor]] = None,
+    pred_masks: torch.Tensor,
+    target_masks: Optional[torch.Tensor] = None,
 ):
     # Datasets yield images with values in [-0.5, 0.5]. Convert these to [0, 1]
     # as required by `to_pil_image`.
@@ -42,14 +43,16 @@ def save_img_and_predicted_mask(
     pil_img = to_pil_image(img)
     pil_img.save(f"{basename}_input_scaled.png")
 
-    for i, pred_mask in enumerate(pred_masks):
-        pil_pred_mask = to_pil_image(pred_mask)
-        pil_pred_mask.save(f"{basename}_pred_mask_{i}.png")
+    n_masks = pred_masks.shape[0]
+    for i in range(n_masks):
+        pil_pred_mask = to_pil_image(pred_masks[i])
+        pil_pred_mask.save(f"{basename}_pred_{i}.png")
 
     if target_masks is not None:
-        for i, target_mask in enumerate(target_masks):
-            pil_target_mask = to_pil_image(target_mask)
-            pil_target_mask.save(f"{basename}_mask_{i}.png")
+        n_target_masks = target_masks.shape[0]
+        for i in range(n_target_masks):
+            pil_target_mask = to_pil_image(target_masks[i])
+            pil_target_mask.save(f"{basename}_target_{i}.png")
 
 
 LossFunc = Callable[[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]
@@ -77,9 +80,22 @@ def train(
         border_masks = border_masks.to(device)
         start = time.time()
 
+        # TODO: Compute loss for both binary mask and approx binary mask.
+        # TODO: Add supervision for threshold mask.
+
+        # Duplicate binary mask along channel axis so we can use it as a target
+        # for both the probability and binary masks.
+        duped_masks = torch.cat([masks, masks], dim=1)
+
         pred_masks = model(img)
 
-        loss = loss_fn(pred_masks, masks, border_masks)
+        # Extract the first two masks (probs, binary class) from the
+        # three masks returned (probs, bin class, threshold map).
+        prob_bin_masks = pred_masks[:, 0:2]
+
+        # This uses an even loss for the pred mask and the binary mask.
+        loss = loss_fn(prob_bin_masks, duped_masks, border_masks)
+
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -88,12 +104,13 @@ def train(
         time_per_img = (time.time() - start) / img.shape[0]
 
         if save_debug_images:
+            # TODO - Visualize all of the masks
             save_img_and_predicted_mask(
                 "train-sample",
                 img_fname[0],
                 img[0],
                 pred_masks[0],
-                [masks[0], border_masks[0]],
+                masks[0],
             )
 
         train_iterable.set_postfix({"loss": loss.item(), "sec/img": time_per_img})
@@ -228,8 +245,27 @@ def main():
     model = DetectionModel().to(device)
 
     def loss_fn(pred, target, border_mask):
-        weights = torch.full(pred.shape, fill_value=0.5, device=device) + border_mask
-        return F.binary_cross_entropy(pred, target, weights)
+        pred_prob = pred[:, 0]
+        weights = (
+            torch.full(pred_prob.shape, fill_value=0.5, device=device)
+            + border_mask[:, 0]
+        )
+
+        pred_channels = pred.shape[1]
+        pred_prob = pred[:, 0]
+        target_prob = target[:, 0]
+        prob_loss = F.binary_cross_entropy(pred_prob, target_prob, weights)
+
+        # In inference mode, there is only a probability mask.
+        if pred_channels == 1:
+            return prob_loss
+
+        # During training the outputs are a probability mask and
+        # post-binarization mask, with the same targets.
+        pred_bin = pred[:, 1]
+        target_bin = target[:, 1]
+        bin_loss = F.binary_cross_entropy(pred_bin, target_bin, weights)
+        return torch.stack([prob_loss, bin_loss]).mean()
 
     optimizer = torch.optim.Adam(model.parameters())
 
