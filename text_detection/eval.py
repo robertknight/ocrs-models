@@ -22,6 +22,9 @@ def main():
     parser.add_argument("model")
     parser.add_argument("image")
     parser.add_argument("out_basename")
+    parser.add_argument(
+        "--export", type=str, help="Export model as ONNX after evaluation"
+    )
     args = parser.parse_args()
 
     model = DetectionModel()
@@ -47,6 +50,9 @@ def main():
     with torch.inference_mode():
         pred_masks = model(img)
     end = time.time()
+
+    if args.export:
+        torch.onnx.export(model, img, args.export)
 
     print(f"Predicted text in {end - start:.2f}s", file=sys.stderr)
 
