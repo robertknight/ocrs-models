@@ -11,7 +11,9 @@ class DepthwiseConv(nn.Module):
                 in_channels,
                 in_channels,
                 kernel_size=3,
-                padding="same",
+                # Equivalent to "same" padding for a kernel size of 3.
+                # PyTorch's ONNX export doesn't support the "same" keyword.
+                padding=(1, 1),
                 bias=False,
                 groups=in_channels,
             ),
@@ -119,11 +121,11 @@ class DetectionModel(nn.Module):
 
         n_masks = 1  # Output masks to generate
         self.out_conv = nn.Sequential(
-            nn.Conv2d(depth_scale[0], n_masks, kernel_size=1, padding="same"),
+            nn.Conv2d(depth_scale[0], n_masks, kernel_size=1),
             nn.Sigmoid(),
         )
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.in_conv(x)
 
         x_down: list[torch.Tensor] = []
