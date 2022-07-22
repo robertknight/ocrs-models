@@ -38,10 +38,16 @@ def draw_quads(img: torch.Tensor, quads: torch.Tensor) -> Image.Image:
     :param img: Greyscale image
     :param quads: Nx4x2 tensor of quads. See `extract_cc_quads`
     """
-
     out_img = to_pil_image(img).convert("RGB")
     draw = ImageDraw.Draw(out_img)
+
     for quad in quads:
-        vertices = [(v[0].item(), v[1].item()) for v in quad]
-        draw.polygon(vertices, fill=None, outline="red", width=2)
+        verts = [(v[0].item(), v[1].item()) for v in quad]
+
+        # Draw quad edge-by-edge because `draw.polygon` is really slow when
+        # there is no fill and outline width > 1.
+        for i, start in enumerate(verts):
+            end = verts[i + 1] if i < len(verts) - 1 else verts[0]
+            draw.line((start, end), fill="red", width=2)
+
     return out_img
