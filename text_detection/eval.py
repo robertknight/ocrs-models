@@ -8,6 +8,7 @@ import torch
 from torchvision.transforms.functional import InterpolationMode, resize, to_pil_image
 
 from .model import DetectionModel
+from .postprocess import draw_quads, extract_cc_quads
 from .train import mask_size
 
 
@@ -59,7 +60,10 @@ def main():
 
     to_pil_image(text_regions).save(f"{args.out_basename}-text-regions.png")
     to_pil_image(pred_masks[0]).save(f"{args.out_basename}-text-probs.png")
-    to_pil_image(text_mask).save(f"{args.out_basename}-text-mask.png")
+
+    word_quads = extract_cc_quads(text_mask)
+    word_quad_image = draw_quads(input_img, word_quads)
+    word_quad_image.save(f"{args.out_basename}-text-words.png")
 
 
 if __name__ == "__main__":
