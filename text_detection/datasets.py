@@ -169,7 +169,12 @@ class DDI100(Dataset):
             mask = transformed[1]
             border_mask = transformed[2]
 
-        return img_path, img, mask, border_mask
+        return {
+            "path": img_path,
+            "image": img,
+            "text_mask": mask,
+            "border_mask": border_mask,
+        }
 
     @staticmethod
     def _generate_mask(width: int, height: int, word_quads):
@@ -266,7 +271,12 @@ class HierText(Dataset):
             mask = transformed[1]
             border_mask = transformed[2]
 
-        return img_path, img, mask, border_mask
+        return {
+            "path": img_path,
+            "image": img,
+            "text_mask": mask,
+            "border_mask": border_mask,
+        }
 
     @staticmethod
     def _generate_json_lines_annotations(annotations_file: str, lines_file: str):

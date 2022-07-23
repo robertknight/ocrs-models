@@ -71,7 +71,12 @@ def train(
 
     train_loss = 0.0
 
-    for batch_idx, (img_fname, img, masks, border_masks) in enumerate(train_iterable):
+    for batch_idx, item in enumerate(train_iterable):
+        img_fname = item["path"]
+        img = item["image"]
+        masks = item["text_mask"]
+        border_masks = item["border_mask"]
+
         img = img.to(device)
         masks = masks.to(device)
         border_masks = border_masks.to(device)
@@ -120,7 +125,12 @@ def test(
     test_iterable.set_description(f"Testing")
 
     with torch.inference_mode():
-        for img_fname, img, masks, border_masks in test_iterable:
+        for item in test_iterable:
+            img_fname = item["path"]
+            img = item["image"]
+            masks = item["text_mask"]
+            border_masks = item["border_mask"]
+
             img = img.to(device)
             masks = masks.to(device)
             border_masks = border_masks.to(device)
