@@ -32,8 +32,7 @@ def draw_quads(img: torch.Tensor, quads: torch.Tensor) -> Image.Image:
     """
     Draw outlines of words on a mask or image.
 
-    Returns a copy of `img` with outline polygons specified by `polys` drawn on
-    top.
+    Returns a copy of `img` with outlines specified by `quads` drawn on top.
 
     :param img: Greyscale image
     :param quads: Nx4x2 tensor of quads. See `extract_cc_quads`
