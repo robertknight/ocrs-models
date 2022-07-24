@@ -4,10 +4,11 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 import torch
+import torchvision
 from torchvision.transforms.functional import to_pil_image
 
 from shapely.geometry import JOIN_STYLE
-from shapely.geometry.polygon import LinearRing
+from shapely.geometry.polygon import LinearRing, Polygon
 
 
 def extract_cc_quads(mask: torch.Tensor) -> torch.Tensor:
@@ -18,8 +19,15 @@ def extract_cc_quads(mask: torch.Tensor) -> torch.Tensor:
     in the mask, the second dimension is the vertex index, and the last dimension
     contains the X and Y coordinates for the vertex.
 
-    :param mask: Greyscale mask indicating text regions in the image
+    :param mask: Greyscale mask (HxW or 1xHxW) indicating text regions in the image
     """
+
+    # Strip channel dimension.
+    if len(mask.shape) > 2:
+        if mask.shape[0] == 1:
+            mask = mask[0]
+        else:
+            raise ValueError("Expected mask to be an HxW or 1xHxW tensor")
 
     mask = mask.to(torch.uint8)
     contours, _ = cv2.findContours(
@@ -69,6 +77,84 @@ def expand_quads(quads: torch.Tensor, dist: float) -> torch.Tensor:
     :return: Tensor of same shape as `quads`
     """
     return torch.stack([expand_quad(quad, dist) for quad in quads])
+
+
+def box_match_metrics(pred: torch.Tensor, target: torch.Tensor) -> dict[str, float]:
+    """
+    Compute metrics for quality of matches between two sets of rotated rects.
+
+    :param pred: Nx4x2 tensor of (box index, vertex index, coord index)
+    :param target: Same as `pred`
+    """
+
+    # Map of (pred index, target index) for targets with a "good" match
+    matches: dict[int, int] = {}
+
+    pred_polys = [Polygon(p.tolist()) for p in pred]
+    target_polys = [Polygon(t.tolist()) for t in target]
+
+    # Areas of intersections of predictions and targets
+    intersection = torch.zeros((len(pred), len(target)))
+
+    # Areas of unions of predictions and targets
+    union = torch.zeros((len(pred), len(target)))
+
+    pred_areas = torch.zeros((len(pred),))
+    for pred_index, pred_poly in enumerate(pred_polys):
+        pred_areas[pred_index] = pred_poly.area
+        for target_index, target_poly in enumerate(target_polys):
+            if not pred_poly.intersects(target_poly):
+                continue
+            pt_intersection = pred_poly.intersection(target_poly)
+            intersection[pred_index, target_index] = pt_intersection.area
+
+            pt_union = pred_poly.union(target_poly)
+            union[pred_index, target_index] = pt_union.area
+
+    target_areas = torch.zeros((len(target),))
+    for target_index, target_poly in enumerate(target_polys):
+        target_areas[target_index] = target_poly.area
+
+    # Find (pred_index, target_index) pairs of "good" matches
+    iou = intersection / union
+    good_match_threshold = 0.5
+    good_match_indexes = torch.nonzero(iou > good_match_threshold)
+    for match_ in good_match_indexes:
+        pred_index, target_index = match_.tolist()
+        matches[pred_index] = target_index
+
+    # Find target boxes that got merged together in the predictions.
+    merged_boxes = 0
+    for pred_index in range(len(pred_polys)):
+        covered_targets = len(
+            torch.nonzero((intersection[pred_index] / target_areas) > 0.5)
+        )
+        if covered_targets > 1:
+            merged_boxes += covered_targets
+
+    # Find target boxes that got split up in the predictions.
+    split_boxes = 0
+    for target_index in range(len(target_polys)):
+        covered_preds = len(
+            torch.nonzero((intersection[:, target_index] / pred_areas) > 0.5)
+        )
+        if covered_preds > 1:
+            split_boxes += 1
+
+    metrics = {
+        # Proportion of predictions that are good matches
+        "precision": len(matches) / len(pred) if len(pred) > 0 else 1.0,
+        # Proportion of expected matches that have a good matching prediction
+        "recall": len(matches) / len(target) if len(target) > 0 else 1.0,
+        # Fraction of target boxes that were merged with one or more other targets
+        # in the predictions.
+        "merged_frac": merged_boxes / len(target) if len(target) > 0 else 0.0,
+        # Fraction of target boxes that were split into two or more boxes in the
+        # predictions
+        "split_frac": split_boxes / len(target) if len(target) > 0 else 0.0,
+    }
+
+    return metrics
 
 
 def draw_quads(img: torch.Tensor, quads: torch.Tensor) -> Image.Image:
