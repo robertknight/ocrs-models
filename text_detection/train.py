@@ -15,6 +15,7 @@ from tqdm import tqdm
 
 from .datasets import DDI100, HierText
 from .model import DetectionModel
+from .postprocess import box_match_metrics, extract_cc_quads
 
 mask_height = 800
 mask_width = int(mask_height * 0.75)
@@ -25,6 +26,10 @@ Size of the input image and output targets that the model is trained with.
 This was originally chosen as ~1/10th of the size of images in the DDI-100
 dataset, which consists of scanned A4 pages.
 """
+
+
+def binarize_mask(mask: torch.Tensor, threshold: float = 0.5) -> torch.Tensor:
+    return torch.where(mask > threshold, 1.0, 0.0)
 
 
 def save_img_and_predicted_mask(
@@ -72,11 +77,11 @@ def train(
 
     train_loss = 0.0
 
-    for batch_idx, item in enumerate(train_iterable):
-        img_fname = item["path"]
-        img = item["image"]
-        masks = item["text_mask"]
-        border_masks = item["border_mask"]
+    for batch_idx, batch in enumerate(train_iterable):
+        img_fname = batch["path"]
+        img = batch["image"]
+        masks = batch["text_mask"]
+        border_masks = batch["border_mask"]
 
         img = img.to(device)
         masks = masks.to(device)
@@ -110,13 +115,43 @@ def train(
     return train_loss
 
 
+def mean(values: list[float]) -> float:
+    return sum(values) / len(values)
+
+
+def get_metric_means(metrics_dicts: list[dict[str, float]]) -> dict[str, float]:
+    """
+    Compute means of all metrics in a list of metrics dicts.
+
+    All metrics dicts should have the same keys. Any keys that are missing
+    from a dict are treated as being present but with a value of zero.
+
+    :param metrics_dicts: Dicts mapping metric names to values
+    :return: Dict mapping metric names to values
+    """
+    if not len(metrics_dicts):
+        return {}
+
+    keys = set(k for md in metrics_dicts for k in md.keys())
+    return {k: mean([md.get(k, 0.0) for md in metrics_dicts]) for k in keys}
+
+
+def format_metrics(metrics: dict[str, float]) -> dict[str, str]:
+    return {k: f"{v:.3f}" for k, v in metrics.items()}
+
+
 def test(
     device: torch.device,
     dataloader: DataLoader,
     model: DetectionModel,
     loss_fn: LossFunc,
     save_debug_images=False,
-):
+) -> tuple[float, dict[str, float]]:
+    """
+    Run evaluation on a model.
+
+    Returns a tuple of (mean pixel-level loss, word-level metrics).
+    """
     model.eval()
 
     test_loss = 0.0
@@ -125,12 +160,13 @@ def test(
     test_iterable = tqdm(dataloader)
     test_iterable.set_description(f"Testing")
 
+    metrics = []
     with torch.inference_mode():
-        for item in test_iterable:
-            img_fname = item["path"]
-            img = item["image"]
-            masks = item["text_mask"]
-            border_masks = item["border_mask"]
+        for batch in test_iterable:
+            img_fname = batch["path"]
+            img = batch["image"]
+            masks = batch["text_mask"]
+            border_masks = batch["border_mask"]
 
             img = img.to(device)
             masks = masks.to(device)
@@ -140,15 +176,21 @@ def test(
 
             test_loss += loss_fn(pred_masks, masks, border_masks).item()
 
+            for item_index, pred_mask in enumerate(pred_masks):
+                pred_quads = extract_cc_quads(binarize_mask(pred_mask).cpu())
+                target_quads = extract_cc_quads(binarize_mask(masks[item_index]).cpu())
+                metrics.append(box_match_metrics(pred_quads, target_quads))
+
             if save_debug_images:
                 save_img_and_predicted_mask(
                     "test-sample", img_fname[0], img[0], pred_masks[0], masks[0]
                 )
-
     test_iterable.clear()
 
+    mean_metrics = get_metric_means(metrics)
+
     test_loss /= n_batches
-    return test_loss
+    return test_loss, mean_metrics
 
 
 def save_checkpoint(filename: str, model: nn.Module, optimizer: Optimizer, epoch: int):
@@ -290,10 +332,11 @@ def main():
                 f"Existing model should be specified with --checkpoint when using --validate-only",
             )
 
-        val_loss = test(
+        val_loss, val_metrics = test(
             device, val_dataloader, model, loss_fn, save_debug_images=args.debug_images
         )
         print(f"Validation loss {val_loss:.4f}")
+        print("Validation metrics:", format_metrics(val_metrics))
         return
 
     while True:
@@ -306,12 +349,13 @@ def main():
             optimizer,
             save_debug_images=args.debug_images,
         )
-        val_loss = test(
+        val_loss, val_metrics = test(
             device, val_dataloader, model, loss_fn, save_debug_images=args.debug_images
         )
         print(
             f"Epoch {epoch} train loss {train_loss:.4f} validation loss {val_loss:.4f}"
         )
+        print(f"Epoch {epoch} validation metrics:", format_metrics(val_metrics))
 
         if train_loss < min_train_loss:
             min_loss = train_loss
