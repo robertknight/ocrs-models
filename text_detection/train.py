@@ -7,6 +7,7 @@ from typing import Callable, Optional
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from torchvision.transforms.functional import resize, to_pil_image
 import torchvision.transforms as transforms
@@ -150,7 +151,7 @@ def test(
     return test_loss
 
 
-def save_checkpoint(filename: str, model, optimizer, epoch: int):
+def save_checkpoint(filename: str, model: nn.Module, optimizer: Optimizer, epoch: int):
     torch.save(
         {
             "epoch": epoch,
@@ -161,8 +162,10 @@ def save_checkpoint(filename: str, model, optimizer, epoch: int):
     )
 
 
-def load_checkpoint(filename: str, model, optimizer):
-    checkpoint = torch.load(filename)
+def load_checkpoint(
+    filename: str, model: nn.Module, optimizer: Optimizer, device: torch.device
+):
+    checkpoint = torch.load(filename, map_location=device)
     model.load_state_dict(checkpoint["model_state"])
     optimizer.load_state_dict(checkpoint["optimizer_state"])
     return checkpoint
@@ -183,6 +186,11 @@ def main():
     )
     parser.add_argument(
         "--max-images", type=int, help="Maximum number of images to load"
+    )
+    parser.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="Run validation on an existing model",
     )
     args = parser.parse_args()
 
@@ -252,8 +260,21 @@ def main():
     epoch = 0
 
     if args.checkpoint:
-        checkpoint = load_checkpoint(args.checkpoint, model, optimizer)
+        checkpoint = load_checkpoint(args.checkpoint, model, optimizer, device)
         epoch = checkpoint["epoch"]
+
+    if args.validate_only:
+        if not args.checkpoint:
+            parser.exit(
+                1,
+                f"Existing model should be specified with --checkpoint when using --validate-only",
+            )
+
+        val_loss = test(
+            device, val_dataloader, model, loss_fn, save_debug_images=args.debug_images
+        )
+        print(f"Validation loss {val_loss:.4f}")
+        return
 
     while True:
         train_loss = train(
