@@ -1,4 +1,4 @@
-from argparse import ArgumentParser
+from argparse import ArgumentParser, BooleanOptionalAction
 import os
 import shutil
 import time
@@ -171,6 +171,33 @@ def load_checkpoint(
     return checkpoint
 
 
+def prepare_transform(mask_size: tuple[int, int], augment) -> nn.Module:
+    """
+    Prepare image transforms to be applied to input images and text masks.
+
+    :param mask_size: HxW output image size
+    :param augment: Whether to apply randomized data augmentation
+    """
+    resize_transform = transforms.Resize(mask_size)
+    if not augment:
+        return resize_transform
+
+    augmentations = transforms.RandomApply(
+        [
+            transforms.RandomChoice(
+                [
+                    transforms.ColorJitter(brightness=0.1, contrast=0.1),
+                    transforms.RandomAffine(degrees=5, scale=(0.8, 1.2), shear=5),
+                    transforms.RandomPerspective(distortion_scale=0.1, p=1.0),
+                    transforms.RandomCrop(size=600, pad_if_needed=True),
+                ]
+            )
+        ],
+        p=0.5,
+    )
+    return transforms.Compose([augmentations, resize_transform])
+
+
 def main():
     parser = ArgumentParser()
     parser.add_argument(
@@ -192,6 +219,12 @@ def main():
         action="store_true",
         help="Run validation on an existing model",
     )
+    parser.add_argument(
+        "--augment",
+        default=True,
+        action=BooleanOptionalAction,
+        help="Enable data augmentation",
+    )
     args = parser.parse_args()
 
     if args.dataset_type == "ddi":
@@ -209,20 +242,7 @@ def main():
     else:
         validation_max_images = None
 
-    augmentations = transforms.RandomApply(
-        [
-            transforms.RandomChoice(
-                [
-                    transforms.ColorJitter(brightness=0.1, contrast=0.1),
-                    transforms.RandomAffine(degrees=5, scale=(0.8, 1.2), shear=5),
-                    transforms.RandomPerspective(distortion_scale=0.1, p=1.0),
-                    transforms.RandomCrop(size=600, pad_if_needed=True),
-                ]
-            )
-        ],
-        p=0.5,
-    )
-    transform = transforms.Compose([augmentations, transforms.Resize(mask_size)])
+    transform = prepare_transform(mask_size, augment=args.augment)
 
     train_dataset = load_dataset(
         args.data_dir, transform=transform, train=True, max_images=max_images
