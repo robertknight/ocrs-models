@@ -14,6 +14,8 @@ import torch
 from torch.utils.data import Dataset
 from torchvision.io import ImageReadMode, read_image, write_png
 from torchvision.utils import draw_segmentation_masks
+from shapely.geometry import JOIN_STYLE, MultiLineString
+from shapely.geometry.polygon import LinearRing
 
 
 def transform_image(img: torch.Tensor) -> torch.Tensor:
@@ -37,25 +39,54 @@ Polygon specified as a list of (x, y) coordinates of corners in clockwise order.
 """
 
 
+def shrink_polygon(poly: Polygon, dist: float) -> Polygon:
+    """
+    Construct a shrunk version of `poly`.
+
+    In the shrunk polygon, each edge will be at an offset of `dist` from the
+    corresponding edge in the input. The returned polygon may be empty if
+    it is thin relative to `dist`.
+    """
+    ring = LinearRing(poly)
+
+    # The offset side needed to shrink the input depends on the orientation of
+    # the points.
+    side = "left" if ring.is_ccw else "right"
+    shrunk_line = ring.parallel_offset(dist, side, join_style=JOIN_STYLE.mitre)
+
+    if isinstance(shrunk_line, MultiLineString):
+        # The input polygon may be split if it is thin in places. To simplify
+        # consuming code, we return an empty result as if the whole polygon
+        # was thin and became empty after shrinking.
+        return []
+
+    return list(shrunk_line.coords)
+
+
 def generate_mask(
     width: int, height: int, polys: list[Polygon]
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
-    Generate a binary mask in CHW format from a set of bounding polygons.
+    Generate a mask in CHW format from polygons of words or lines.
+
+    Returns a tuple of (text_mask, border_mask) where `text_mask` is a mask
+    indicating text regions in the image and `border_mask` indicates the border
+    of text regions. The text regions are shrunk slightly to create gaps between
+    adjacent regions.
 
     :param width: Width of output image
     :param height: Height of output image
     :param polys: List of polygons to draw on the mask.
     """
+
     mask_img = Image.new("1", (width, height), 0)
     draw = ImageDraw.Draw(mask_img)
+
     for poly in polys:
-        draw.polygon(
-            poly,
-            fill="white",
-            outline="white",
-            width=1,
-        )
+        shrunk_poly = shrink_polygon(poly, dist=3.0)
+        if not shrunk_poly:
+            continue
+        draw.polygon(shrunk_poly, fill="white", outline=None)
 
     # Use numpy to convert the mask from bool -> float rather than PyTorch to
     # work around https://github.com/pytorch/pytorch/issues/54789. This caused
@@ -64,15 +95,10 @@ def generate_mask(
 
     kernel = np.ones((3, 3), dtype=np.float32)
 
-    # Erode the mask. This has the same effect as shrinking the input polygons,
-    # and serves to make it easier to separate adjacent regions in prediction
-    # outputs.
-    eroded_mask = cv2.erode(mask, kernel, iterations=2)
-
     border_mask = cv2.dilate(mask, kernel, iterations=10)
-    border_mask = border_mask - eroded_mask
+    border_mask = border_mask - mask
 
-    return (torch.Tensor(eroded_mask), torch.Tensor(border_mask))
+    return (torch.Tensor(mask), torch.Tensor(border_mask))
 
 
 class DDI100Unpickler(pickle.Unpickler):
@@ -328,8 +354,13 @@ if __name__ == "__main__":
     print(f"Dataset length {len(dataset)}")
 
     for i in range(len(dataset)):
+        # This loop doesn't use `enumerate` due to mypy error.
+        item = dataset[i]
+
         print(f"Processing image {i+1}...")
-        path, img, mask, border_mask = dataset[i]
+
+        img = item["image"]
+        mask = item["text_mask"]
 
         grey_img = untransform_image(img)
         rgb_img = grey_img.expand((3, grey_img.shape[1], grey_img.shape[2]))
