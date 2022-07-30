@@ -8,7 +8,8 @@ import torch
 from torchvision.transforms.functional import InterpolationMode, resize, to_pil_image
 
 from .model import DetectionModel
-from .postprocess import draw_quads, extract_cc_quads
+from .datasets import SHRINK_DISTANCE
+from .postprocess import draw_quads, expand_quads, extract_cc_quads
 from .train import mask_size
 
 
@@ -61,7 +62,10 @@ def main():
     to_pil_image(text_regions).save(f"{args.out_basename}-text-regions.png")
     to_pil_image(pred_masks[0]).save(f"{args.out_basename}-text-probs.png")
 
+    # Extract word quads and expand them to compensate for the shrinking that is
+    # applied to text polygons when text masks are generated during training.
     word_quads = extract_cc_quads(text_mask)
+    word_quads = expand_quads(word_quads, dist=SHRINK_DISTANCE)
     word_quad_image = draw_quads(input_img, word_quads)
     word_quad_image.save(f"{args.out_basename}-text-words.png")
 

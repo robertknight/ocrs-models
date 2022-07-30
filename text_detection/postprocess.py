@@ -6,6 +6,9 @@ from PIL import Image, ImageDraw
 import torch
 from torchvision.transforms.functional import to_pil_image
 
+from shapely.geometry import JOIN_STYLE
+from shapely.geometry.polygon import LinearRing
+
 
 def extract_cc_quads(mask: torch.Tensor) -> torch.Tensor:
     """
@@ -26,6 +29,46 @@ def extract_cc_quads(mask: torch.Tensor) -> torch.Tensor:
         [cv2.boxPoints(cv2.minAreaRect(contour[:, 0])) for contour in contours]
     )
     return torch.Tensor(quads)
+
+
+def expand_quad(quad: torch.Tensor, dist: float) -> torch.Tensor:
+    """
+    Construct an enlarged version of `quad`.
+
+    In the returned quad, each edge will be at an (approximate) offset of `dist`
+    from the corresponding edge in the input.
+
+    :param quad: 4x2 tensor
+    :param dist: Units to offset quad by
+    """
+    ring = LinearRing(quad.tolist())
+
+    # If the input quad is a point, it can't be offset.
+    if ring.length == 0.0:
+        return quad
+
+    # The offset side needed to enlarge the input depends on the orientation of
+    # the points.
+    side = "right" if ring.is_ccw else "left"
+    expanded_rect = ring.parallel_offset(
+        dist, side, join_style=JOIN_STYLE.mitre
+    ).minimum_rotated_rectangle
+
+    # expanded_rect has 5 vertices, where the first and last are the same.
+    quad_verts = list(expanded_rect.exterior.coords)[:-1]
+
+    return torch.tensor(quad_verts)
+
+
+def expand_quads(quads: torch.Tensor, dist: float) -> torch.Tensor:
+    """
+    Expand/dilate each quad in a list.
+
+    :param quads: Nx4x2 tensor of quads. See `extract_cc_quads`
+    :param dist: Number of pixels by which to offset each edge in each quad
+    :return: Tensor of same shape as `quads`
+    """
+    return torch.stack([expand_quad(quad, dist) for quad in quads])
 
 
 def draw_quads(img: torch.Tensor, quads: torch.Tensor) -> Image.Image:

@@ -18,6 +18,15 @@ from shapely.geometry import JOIN_STYLE, MultiLineString
 from shapely.geometry.polygon import LinearRing
 
 
+SHRINK_DISTANCE = 3.0
+"""
+Number of pixels by which text regions are shrunk in the text mask.
+
+Each edge in a text polygon is offset by this number of pixels before being
+used to draw and fill an area in the text mask.
+"""
+
+
 def transform_image(img: torch.Tensor) -> torch.Tensor:
     """
     Transform an image into the format expected by models in this package.
@@ -71,8 +80,8 @@ def generate_mask(
 
     Returns a tuple of (text_mask, border_mask) where `text_mask` is a mask
     indicating text regions in the image and `border_mask` indicates the border
-    of text regions. The text regions are shrunk slightly to create gaps between
-    adjacent regions.
+    of text regions. The text regions are shrunk by `SHRINK_DISTANCE` along each
+    edge to create more space between adjacent regions.
 
     :param width: Width of output image
     :param height: Height of output image
@@ -83,7 +92,7 @@ def generate_mask(
     draw = ImageDraw.Draw(mask_img)
 
     for poly in polys:
-        shrunk_poly = shrink_polygon(poly, dist=3.0)
+        shrunk_poly = shrink_polygon(poly, dist=SHRINK_DISTANCE)
         if not shrunk_poly:
             continue
         draw.polygon(shrunk_poly, fill="white", outline=None)
