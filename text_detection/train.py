@@ -213,6 +213,41 @@ def load_checkpoint(
     return checkpoint
 
 
+def balanced_cross_entropy_loss(
+    pred: torch.Tensor, target: torch.Tensor, border_mask: torch.Tensor
+) -> torch.Tensor:
+    """
+    Compute balanced binary cross-entropy loss between two images.
+
+    This loss accounts for the targets being unbalanced between text and
+    non-text pixels by computing per-pixel losses and then taking the mean
+    of losses of an equal number of text and non-text pixels.
+
+    :param pred: NCHW tensor of probabilities
+    :param target: NCHW tensor of targets
+    :param border_mask: NCHW tensor indicating regions of the image that should
+      be weighted more highly in the loss function.
+    """
+
+    pos_mask = target > 0.5
+    neg_mask = target < 0.5
+
+    weights = torch.full(pred.shape, fill_value=0.5, device=pred.device) + border_mask
+    pixel_loss = F.binary_cross_entropy(pred, target, weights, reduction="none")
+
+    pos_loss = pos_mask * pixel_loss
+    neg_loss = neg_mask * pixel_loss
+
+    pos_elements = torch.count_nonzero(pos_mask).item()
+    neg_elements = torch.count_nonzero(neg_mask).item()
+    n_els = int(min(pos_elements, neg_elements))
+
+    pos_topk_vals, _ = pos_loss.flatten().topk(k=n_els, sorted=False)
+    neg_topk_vals, _ = neg_loss.flatten().topk(k=n_els, sorted=False)
+
+    return torch.cat([pos_topk_vals, neg_topk_vals]).mean()
+
+
 def prepare_transform(mask_size: tuple[int, int], augment) -> nn.Module:
     """
     Prepare image transforms to be applied to input images and text masks.
@@ -307,10 +342,6 @@ def main():
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = DetectionModel().to(device)
 
-    def loss_fn(pred, target, border_mask):
-        weights = torch.full(pred.shape, fill_value=0.5, device=device) + border_mask
-        return F.binary_cross_entropy(pred, target, weights)
-
     optimizer = torch.optim.Adam(model.parameters())
 
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -333,7 +364,11 @@ def main():
             )
 
         val_loss, val_metrics = test(
-            device, val_dataloader, model, loss_fn, save_debug_images=args.debug_images
+            device,
+            val_dataloader,
+            model,
+            balanced_cross_entropy_loss,
+            save_debug_images=args.debug_images,
         )
         print(f"Validation loss {val_loss:.4f}")
         print("Validation metrics:", format_metrics(val_metrics))
@@ -345,12 +380,16 @@ def main():
             device,
             train_dataloader,
             model,
-            loss_fn,
+            balanced_cross_entropy_loss,
             optimizer,
             save_debug_images=args.debug_images,
         )
         val_loss, val_metrics = test(
-            device, val_dataloader, model, loss_fn, save_debug_images=args.debug_images
+            device,
+            val_dataloader,
+            model,
+            balanced_cross_entropy_loss,
+            save_debug_images=args.debug_images,
         )
         print(
             f"Epoch {epoch} train loss {train_loss:.4f} validation loss {val_loss:.4f}"
