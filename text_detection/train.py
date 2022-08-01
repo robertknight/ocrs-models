@@ -58,7 +58,7 @@ def save_img_and_predicted_mask(
             pil_target_mask.save(f"{basename}_mask_{i}.png")
 
 
-LossFunc = Callable[[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]
+LossFunc = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 
 
 def train(
@@ -81,16 +81,14 @@ def train(
         img_fname = batch["path"]
         img = batch["image"]
         masks = batch["text_mask"]
-        border_masks = batch["border_mask"]
 
         img = img.to(device)
         masks = masks.to(device)
-        border_masks = border_masks.to(device)
         start = time.time()
 
         pred_masks = model(img)
 
-        loss = loss_fn(pred_masks, masks, border_masks)
+        loss = loss_fn(pred_masks, masks)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -104,7 +102,7 @@ def train(
                 img_fname[0],
                 img[0],
                 pred_masks[0],
-                [masks[0], border_masks[0]],
+                [masks[0]],
             )
 
         train_iterable.set_postfix({"loss": loss.item(), "sec/img": time_per_img})
@@ -166,15 +164,13 @@ def test(
             img_fname = batch["path"]
             img = batch["image"]
             masks = batch["text_mask"]
-            border_masks = batch["border_mask"]
 
             img = img.to(device)
             masks = masks.to(device)
-            border_masks = border_masks.to(device)
 
             pred_masks = model(img)
 
-            test_loss += loss_fn(pred_masks, masks, border_masks).item()
+            test_loss += loss_fn(pred_masks, masks).item()
 
             for item_index, pred_mask in enumerate(pred_masks):
                 pred_quads = extract_cc_quads(binarize_mask(pred_mask).cpu())
@@ -214,7 +210,7 @@ def load_checkpoint(
 
 
 def balanced_cross_entropy_loss(
-    pred: torch.Tensor, target: torch.Tensor, border_mask: torch.Tensor
+    pred: torch.Tensor, target: torch.Tensor
 ) -> torch.Tensor:
     """
     Compute balanced binary cross-entropy loss between two images.
@@ -225,15 +221,12 @@ def balanced_cross_entropy_loss(
 
     :param pred: NCHW tensor of probabilities
     :param target: NCHW tensor of targets
-    :param border_mask: NCHW tensor indicating regions of the image that should
-      be weighted more highly in the loss function.
     """
 
     pos_mask = target > 0.5
     neg_mask = target < 0.5
 
-    weights = torch.full(pred.shape, fill_value=0.5, device=pred.device) + border_mask
-    pixel_loss = F.binary_cross_entropy(pred, target, weights, reduction="none")
+    pixel_loss = F.binary_cross_entropy(pred, target, reduction="none")
 
     pos_loss = pos_mask * pixel_loss
     neg_loss = neg_mask * pixel_loss
