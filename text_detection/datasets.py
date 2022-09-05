@@ -72,16 +72,13 @@ def shrink_polygon(poly: Polygon, dist: float) -> Polygon:
     return list(shrunk_line.coords)
 
 
-def generate_mask(
-    width: int, height: int, polys: list[Polygon]
-) -> tuple[torch.Tensor, torch.Tensor]:
+def generate_mask(width: int, height: int, polys: list[Polygon]) -> torch.Tensor:
     """
     Generate a mask in CHW format from polygons of words or lines.
 
-    Returns a tuple of (text_mask, border_mask) where `text_mask` is a mask
-    indicating text regions in the image and `border_mask` indicates the border
-    of text regions. The text regions are shrunk by `SHRINK_DISTANCE` along each
-    edge to create more space between adjacent regions.
+    Returns a binary mask indicating text regions in the image. The text regions
+    are shrunk by `SHRINK_DISTANCE` along each edge to create more space between
+    adjacent regions.
 
     :param width: Width of output image
     :param height: Height of output image
@@ -102,12 +99,7 @@ def generate_mask(
     # True values to be mapped to 255.0 instead of 1.0 on Linux (but not macOS).
     mask = np.array(mask_img, dtype=np.float32)
 
-    kernel = np.ones((3, 3), dtype=np.float32)
-
-    border_mask = cv2.dilate(mask, kernel, iterations=10)
-    border_mask = border_mask - mask
-
-    return (torch.Tensor(mask), torch.Tensor(border_mask))
+    return torch.Tensor(mask)
 
 
 class DDI100Unpickler(pickle.Unpickler):
@@ -192,23 +184,20 @@ class DDI100(Dataset):
 
         _, height, width = img.shape
 
-        mask, border_mask = generate_mask(width, height, word_quads)
+        mask = generate_mask(width, height, word_quads)
         mask = torch.unsqueeze(mask, 0)  # Add channel dimension
-        border_mask = torch.unsqueeze(border_mask, 0)  # Add channel dimension
 
         if self.transform:
             # Input and target are transformed in one call to ensure same
             # parameters are used for both, if transform is randomized.
-            transformed = self.transform(torch.stack([img, mask, border_mask]))
+            transformed = self.transform(torch.stack([img, mask]))
             img = transformed[0]
             mask = transformed[1]
-            border_mask = transformed[2]
 
         return {
             "path": img_path,
             "image": img,
             "text_mask": mask,
-            "border_mask": border_mask,
         }
 
     @staticmethod
@@ -294,23 +283,20 @@ class HierText(Dataset):
         img = transform_image(read_image(img_path, ImageReadMode.GRAY))
         _, height, width = img.shape
 
-        mask, border_mask = generate_mask(width, height, word_polys)
+        mask = generate_mask(width, height, word_polys)
         mask = torch.unsqueeze(mask, 0)  # Add channel dimension
-        border_mask = torch.unsqueeze(border_mask, 0)  # Add channel dimension
 
         if self.transform:
             # Input and target are transformed in one call to ensure same
             # parameters are used for both, if transform is randomized.
-            transformed = self.transform(torch.stack([img, mask, border_mask]))
+            transformed = self.transform(torch.stack([img, mask]))
             img = transformed[0]
             mask = transformed[1]
-            border_mask = transformed[2]
 
         return {
             "path": img_path,
             "image": img,
             "text_mask": mask,
-            "border_mask": border_mask,
         }
 
     @staticmethod

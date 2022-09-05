@@ -58,7 +58,7 @@ def save_img_and_predicted_mask(
             pil_target_mask.save(f"{basename}_mask_{i}.png")
 
 
-LossFunc = Callable[[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]
+LossFunc = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 
 
 def train(
@@ -81,16 +81,14 @@ def train(
         img_fname = batch["path"]
         img = batch["image"]
         masks = batch["text_mask"]
-        border_masks = batch["border_mask"]
 
         img = img.to(device)
         masks = masks.to(device)
-        border_masks = border_masks.to(device)
         start = time.time()
 
         pred_masks = model(img)
 
-        loss = loss_fn(pred_masks, masks, border_masks)
+        loss = loss_fn(pred_masks, masks)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -104,7 +102,7 @@ def train(
                 img_fname[0],
                 img[0],
                 pred_masks[0],
-                [masks[0], border_masks[0]],
+                [masks[0]],
             )
 
         train_iterable.set_postfix({"loss": loss.item(), "sec/img": time_per_img})
@@ -166,15 +164,13 @@ def test(
             img_fname = batch["path"]
             img = batch["image"]
             masks = batch["text_mask"]
-            border_masks = batch["border_mask"]
 
             img = img.to(device)
             masks = masks.to(device)
-            border_masks = border_masks.to(device)
 
             pred_masks = model(img)
 
-            test_loss += loss_fn(pred_masks, masks, border_masks).item()
+            test_loss += loss_fn(pred_masks, masks).item()
 
             for item_index, pred_mask in enumerate(pred_masks):
                 pred_quads = extract_cc_quads(binarize_mask(pred_mask).cpu())
@@ -211,6 +207,38 @@ def load_checkpoint(
     model.load_state_dict(checkpoint["model_state"])
     optimizer.load_state_dict(checkpoint["optimizer_state"])
     return checkpoint
+
+
+def balanced_cross_entropy_loss(
+    pred: torch.Tensor, target: torch.Tensor
+) -> torch.Tensor:
+    """
+    Compute balanced binary cross-entropy loss between two images.
+
+    This loss accounts for the targets being unbalanced between text and
+    non-text pixels by computing per-pixel losses and then taking the mean
+    of losses of an equal number of text and non-text pixels.
+
+    :param pred: NCHW tensor of probabilities
+    :param target: NCHW tensor of targets
+    """
+
+    pos_mask = target > 0.5
+    neg_mask = target < 0.5
+
+    pixel_loss = F.binary_cross_entropy(pred, target, reduction="none")
+
+    pos_loss = pos_mask * pixel_loss
+    neg_loss = neg_mask * pixel_loss
+
+    pos_elements = torch.count_nonzero(pos_mask).item()
+    neg_elements = torch.count_nonzero(neg_mask).item()
+    n_els = int(min(pos_elements, neg_elements))
+
+    pos_topk_vals, _ = pos_loss.flatten().topk(k=n_els, sorted=False)
+    neg_topk_vals, _ = neg_loss.flatten().topk(k=n_els, sorted=False)
+
+    return torch.cat([pos_topk_vals, neg_topk_vals]).mean()
 
 
 def prepare_transform(mask_size: tuple[int, int], augment) -> nn.Module:
@@ -307,10 +335,6 @@ def main():
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = DetectionModel().to(device)
 
-    def loss_fn(pred, target, border_mask):
-        weights = torch.full(pred.shape, fill_value=0.5, device=device) + border_mask
-        return F.binary_cross_entropy(pred, target, weights)
-
     optimizer = torch.optim.Adam(model.parameters())
 
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -333,7 +357,11 @@ def main():
             )
 
         val_loss, val_metrics = test(
-            device, val_dataloader, model, loss_fn, save_debug_images=args.debug_images
+            device,
+            val_dataloader,
+            model,
+            balanced_cross_entropy_loss,
+            save_debug_images=args.debug_images,
         )
         print(f"Validation loss {val_loss:.4f}")
         print("Validation metrics:", format_metrics(val_metrics))
@@ -345,12 +373,16 @@ def main():
             device,
             train_dataloader,
             model,
-            loss_fn,
+            balanced_cross_entropy_loss,
             optimizer,
             save_debug_images=args.debug_images,
         )
         val_loss, val_metrics = test(
-            device, val_dataloader, model, loss_fn, save_debug_images=args.debug_images
+            device,
+            val_dataloader,
+            model,
+            balanced_cross_entropy_loss,
+            save_debug_images=args.debug_images,
         )
         print(
             f"Epoch {epoch} train loss {train_loss:.4f} validation loss {val_loss:.4f}"
