@@ -78,12 +78,13 @@ class Up(nn.Module):
 
     def forward(self, x_to_upscale: torch.Tensor, x: torch.Tensor):
         upscaled = self.up(x_to_upscale)
-        pad_r = x.shape[3] - upscaled.shape[3]
-        pad_b = x.shape[2] - upscaled.shape[2]
-        upscaled = nn.functional.pad(upscaled, (0, pad_r, 0, pad_b))
+
+        # `x_to_upscale` is assumed to be half the resolution of `x`. When
+        # it is conv-transposed the result can be 1 pixel taller/wider than `x`.
+        # Trim the right/bottom edges to make the images the same size.
+        upscaled = upscaled[:, :, 0 : x.shape[2], 0 : x.shape[3]]
 
         combined = torch.cat((upscaled, x), dim=1)
-
         return self.contract(combined)
 
 
