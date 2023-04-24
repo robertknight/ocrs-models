@@ -139,3 +139,62 @@ class DetectionModel(nn.Module):
             x_up = up_op(x_up, x if i == 0 else x_down[i - 1])
 
         return self.out_conv(x_up)
+
+
+class RecognitionModel(nn.Module):
+    """
+    Text recognition model.
+
+    This takes images of text line as input and outputs a sequence of one-hot
+    encoded character predictions.
+
+    The model consists of a CNN to extract features, followed by a BiLSTM to
+    predict the character sequence. This follows the general structure of
+    https://keras.io/examples/vision/captcha_ocr.
+    """
+
+    def __init__(self, alphabet: str):
+        super().__init__()
+
+        n_classes = len(alphabet) + 1
+
+        self.conv = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=3, padding="same"),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2),
+            nn.Conv2d(32, 64, kernel_size=3, padding="same"),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2),
+        )
+        img_height = 64
+        self.linear = nn.Sequential(nn.Linear(img_height // 4 * 64, 64), nn.ReLU())
+
+        # TODO - Add dropout to LSTM modules?
+        # TODO - Use `num_layers` instead of two separate LSTM modules?
+        self.lstm1 = nn.LSTM(64, 128, bidirectional=True)
+        self.lstm2 = nn.LSTM(256, 64, bidirectional=True)
+
+        self.output = nn.Sequential(
+            nn.Linear(128, n_classes),
+            # nb. We use `LogSoftmax` here because `torch.nn.CTCLoss` expects log probs
+            nn.LogSoftmax(),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        n, c, h, w = x.shape
+
+        x = self.conv(x)
+
+        # Reshape from (N, 64, H/4, W/4) to (W/4, N, 64, H/4)
+        x = torch.permute(x, (3, 0, 1, 2))
+
+        # Combine last two dims to get (W/4, N, H/4 * 64)
+        x = torch.reshape(x, (x.shape[0], x.shape[1], -1))
+
+        # Reduce feature size for LSTM input
+        x = self.linear(x)
+
+        x, _ = self.lstm1(x)
+        x, _ = self.lstm2(x)
+
+        return self.output(x)
