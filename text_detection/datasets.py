@@ -544,6 +544,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max-images", type=int, help="Maximum number of items to process"
     )
+    parser.add_argument(
+        "--subset",
+        choices=["train", "validation"],
+        help="Subset of dataset to load",
+        default="train",
+    )
     args = parser.parse_args()
 
     load_dataset: Callable[..., DDI100 | HierText | HierTextRecognition]
@@ -557,7 +563,9 @@ if __name__ == "__main__":
         case _:
             raise Exception(f"Unknown dataset type {args.dataset_type}")
 
-    dataset = load_dataset(args.root_dir, train=False, max_images=args.max_images)
+    dataset = load_dataset(
+        args.root_dir, train=args.subset == "train", max_images=args.max_images
+    )
 
     print(f"Dataset length {len(dataset)}")
 
