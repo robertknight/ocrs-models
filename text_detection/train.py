@@ -269,7 +269,7 @@ def prepare_transform(mask_size: tuple[int, int], augment) -> nn.Module:
 
 
 def main():
-    parser = ArgumentParser()
+    parser = ArgumentParser(description="Train text detection model.")
     parser.add_argument(
         "dataset_type", type=str, choices=["ddi", "hiertext"], help="Format of dataset"
     )
