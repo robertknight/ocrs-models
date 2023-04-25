@@ -534,11 +534,18 @@ class HierTextRecognition(Dataset):
 
 
 if __name__ == "__main__":
-    parser = ArgumentParser()
+    parser = ArgumentParser(
+        description="""
+Preview items from a dataset.
+
+The dataset must have been downloaded and extracted to a directory before
+running this command.
+"""
+    )
     parser.add_argument(
         "dataset_type",
         choices=["ddi", "hiertext", "hiertext-rec"],
-        help="Type of dataset to load",
+        help="Dataset to load",
     )
     parser.add_argument("root_dir", help="Root directory of dataset")
     parser.add_argument(
