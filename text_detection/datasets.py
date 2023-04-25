@@ -1,7 +1,9 @@
 from argparse import ArgumentParser
+from functools import lru_cache
 import gzip
 import json
 import os
+from os.path import basename
 import pickle
 import pickletools
 from typing import Callable, TextIO, cast
@@ -14,6 +16,7 @@ import torch
 from torch.utils.data import Dataset
 from torchvision.io import ImageReadMode, read_image, write_png
 from torchvision.utils import draw_segmentation_masks
+from torchvision.transforms.functional import resize
 from shapely.geometry import JOIN_STYLE, MultiLineString
 from shapely.geometry.polygon import LinearRing
 
@@ -72,12 +75,14 @@ def shrink_polygon(poly: Polygon, dist: float) -> Polygon:
     return list(shrunk_line.coords)
 
 
-def generate_mask(width: int, height: int, polys: list[Polygon]) -> torch.Tensor:
+def generate_mask(
+    width: int, height: int, polys: list[Polygon], shrink_dist: float = SHRINK_DISTANCE
+) -> torch.Tensor:
     """
     Generate a mask in CHW format from polygons of words or lines.
 
     Returns a binary mask indicating text regions in the image. The text regions
-    are shrunk by `SHRINK_DISTANCE` along each edge to create more space between
+    are shrunk by `shrink_dist` along each edge to create more space between
     adjacent regions.
 
     :param width: Width of output image
@@ -89,7 +94,10 @@ def generate_mask(width: int, height: int, polys: list[Polygon]) -> torch.Tensor
     draw = ImageDraw.Draw(mask_img)
 
     for poly in polys:
-        shrunk_poly = shrink_polygon(poly, dist=SHRINK_DISTANCE)
+        if shrink_dist != 0.0:
+            shrunk_poly = shrink_polygon(poly, dist=shrink_dist)
+        else:
+            shrunk_poly = poly
         if not shrunk_poly:
             continue
         draw.polygon(shrunk_poly, fill="white", outline=None)
@@ -325,41 +333,262 @@ class HierText(Dataset):
                     out_fp.write(f"{ann_json}\n")
 
 
+DEFAULT_ALPHABET = "0123456789!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ €ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+"""
+Default alphabet used by text recognition models.
+
+This matches the English "gen2" model from EasyOCR.
+"""
+
+
+def encode_text(text: str, alphabet: list[str], unknown_char: str) -> torch.Tensor:
+    """
+    Convert `text` into a `[len(text), label]` tensor of one-hot encoded sequences.
+
+    Each `label` value is the index of the character in `alphabet` + 1. The
+    label value 0 is reserved for the blank character. If a character is
+    encountered in `text` which does not appear in `alphabet`, the character
+    `unknown_char` is substituted.
+    """
+    x = torch.zeros([len(text), len(alphabet) + 1])
+    for i, ch in enumerate(text):
+        try:
+            char_idx = alphabet.index(ch)
+        except ValueError:
+            char_idx = alphabet.index(unknown_char)
+        x[i, char_idx + 1] = 1.0
+    return x
+
+
+def decode_text(x: torch.Tensor, alphabet: list[str]) -> str:
+    """
+    Convert a one-hot encoded class vector into a text string.
+
+    `x` is a vector of `[seq, label]` labels, where the range of `label` is
+    `len(alphabet) + 1`. The label 0 is reserved for the blank character.
+    """
+    seq, n_labels = x.shape
+    if n_labels != len(alphabet) + 1:
+        raise ValueError("Input class dimension does not match alphabet length")
+    char_indexes = x.argmax(1)
+    chars = [alphabet[char_indexes[i] - 1] for i in range(seq)]
+    return "".join(chars)
+
+
+def clamp(val: int, min_val: int, max_val: int) -> int:
+    return max(min_val, min(val, max_val))
+
+
+class HierTextRecognition(Dataset):
+    """
+    HierText dataset for text recognition.
+
+    See the `HierText` class for general notes on the HierText dataset. This
+    class yields greyscale images of text lines from the dataset, along with
+    the associated text content as a one-hot encoded sequence of class labels.
+    """
+
+    def __init__(
+        self,
+        root_dir: str,
+        train=True,
+        transform=None,
+        max_images=None,
+        alphabet: list[str] | None = None,
+        output_height: int = 64,
+    ):
+        super().__init__()
+
+        if alphabet is None:
+            alphabet = [c for c in DEFAULT_ALPHABET]
+        self.alphabet = cast(list[str], alphabet)
+
+        if train:
+            self._img_dir = f"{root_dir}/train"
+            annotations_file = f"{root_dir}/gt/train.jsonl.gz"
+        else:
+            self._img_dir = f"{root_dir}/validation"
+            annotations_file = f"{root_dir}/gt/validation.jsonl.gz"
+
+        if not os.path.exists(self._img_dir):
+            raise Exception(f'Image directory "{self._img_dir}" not found')
+
+        if not os.path.exists(annotations_file):
+            raise Exception(f'Label data file "{annotations_file}" not found')
+
+        lines_file = annotations_file.replace(".jsonl.gz", "-lines.jsonl")
+        self._generate_text_line_annotations(annotations_file, lines_file)
+
+        with open(lines_file) as fp:
+            self._text_lines = [line for line in fp]
+
+        if max_images:
+            self._text_lines = self._text_lines[:max_images]
+
+        self.transform = transform
+        self.output_height = output_height
+
+    @lru_cache(maxsize=100)
+    def _get_image(self, path: str) -> torch.Tensor:
+        return transform_image(read_image(path, ImageReadMode.GRAY))
+
+    def __len__(self):
+        return len(self._text_lines)
+
+    def __getitem__(self, idx: int):
+        """
+        Return a dict containing a line image and sequence label vector.
+
+        The line image is a CHW tensor with one greyscale color channel.
+        The text sequence is a [seq, class] tensor.
+        """
+        text_line = json.loads(self._text_lines[idx])
+        img_id = text_line["image_id"]
+
+        # Load full image.
+        img_path = f"{self._img_dir}/{img_id}.jpg"
+        img = self._get_image(img_path)
+        _, img_height, img_width = img.shape
+
+        # Extract just the current line from the full image.
+        line_poly = [
+            (clamp(coord[0], 0, img_width - 1), clamp(coord[1], 0, img_height - 1))
+            for coord in text_line["vertices"]
+        ]
+        min_x = min([x for x, y in line_poly])
+        max_x = max([x for x, y in line_poly])
+        min_y = min([y for x, y in line_poly])
+        max_y = max([y for x, y in line_poly])
+
+        for i, (x, y) in enumerate(line_poly):
+            line_poly[i] = (x - min_x, y - min_y)
+        line_width = max_x - min_x
+        line_height = max_y - min_y
+
+        line_img = img[:, min_y:max_y, min_x:max_x]
+        mask = generate_mask(line_width, line_height, [line_poly], shrink_dist=0.0)
+        mask = torch.unsqueeze(mask, 0)  # Add channel dimension
+
+        if line_img.shape != mask.shape:
+            print(
+                f"Shape mismatch {line_img.shape} vs {mask.shape} line height {line_height} min y {min_y} max y {max_y} image size {img.shape}"
+            )
+        line_img = line_img * mask
+
+        aspect_ratio = line_width / line_height
+        line_img = resize(
+            line_img, [self.output_height, int(self.output_height * aspect_ratio)]
+        )
+
+        # Encode the corresponding character sequence as a one-hot vector.
+        text = text_line["text"]
+        text_seq = encode_text(text, self.alphabet, unknown_char="?")
+
+        # TODO - Re-enable image transforms
+        # if self.transform:
+        #     # Input and target are transformed in one call to ensure same
+        #     # parameters are used for both, if transform is randomized.
+        #     transformed = self.transform(torch.stack([img, mask]))
+        #     img = transformed[0]
+        #     mask = transformed[1]
+
+        return {
+            "path": img_path,
+            "image": line_img,
+            "text_seq": text_seq,
+        }
+
+    @staticmethod
+    def _generate_text_line_annotations(annotations_file: str, lines_file: str):
+        """
+        Generate text line annotations from the raw HierText dataset.
+
+        The training data is a large gzipped JSON file which is slow to parse
+        (despite the ".jsonl.gz" suffix, it is just JSON).
+
+        Convert this to JSONL, with one line per text line in the input dataset.
+        This can be loaded efficiently as individual entries can be parsed only
+        when needed.
+        """
+        if os.path.exists(lines_file) and (
+            os.path.getmtime(lines_file) >= os.path.getmtime(annotations_file)
+        ):
+            return
+
+        print(f"Extracting text line annotations from {annotations_file}")
+        with gzip.open(annotations_file) as in_fp:
+            annotations = json.load(in_fp)["annotations"]
+
+            with open(lines_file, "w") as out_fp:
+                for ann in tqdm(annotations):
+                    lines = []
+                    for para in ann["paragraphs"]:
+                        for line in para["lines"]:
+                            line_data = {
+                                "image_id": ann["image_id"],
+                                "vertices": line["vertices"],
+                                "text": line["text"],
+                            }
+                            ann_json = json.dumps(line_data)
+                            out_fp.write(f"{ann_json}\n")
+
+
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument(
-        "dataset_type", choices=["ddi", "hiertext"], help="Type of dataset to load"
+        "dataset_type",
+        choices=["ddi", "hiertext", "hiertext-rec"],
+        help="Type of dataset to load",
     )
     parser.add_argument("root_dir", help="Root directory of dataset")
     parser.add_argument(
-        "--max-images", type=int, help="Maximum number of images to process"
+        "--max-images", type=int, help="Maximum number of items to process"
     )
     args = parser.parse_args()
 
-    load_dataset: Callable[..., DDI100 | HierText]
-    if args.dataset_type == "ddi":
-        load_dataset = DDI100
-    elif args.dataset_type == "hiertext":
-        load_dataset = HierText
-    else:
-        raise Exception(f"Unknown dataset type {args.dataset_type}")
+    load_dataset: Callable[..., DDI100 | HierText | HierTextRecognition]
+    match args.dataset_type:
+        case "ddi":
+            load_dataset = DDI100
+        case "hiertext":
+            load_dataset = HierText
+        case "hiertext-rec":
+            load_dataset = HierTextRecognition
+        case _:
+            raise Exception(f"Unknown dataset type {args.dataset_type}")
 
     dataset = load_dataset(args.root_dir, train=False, max_images=args.max_images)
 
     print(f"Dataset length {len(dataset)}")
 
-    for i in range(len(dataset)):
-        # This loop doesn't use `enumerate` due to mypy error.
-        item = dataset[i]
+    if isinstance(dataset, HierTextRecognition):
+        # Process text recognition dataset
+        for i in range(len(dataset)):
+            item = dataset[i]
+            img = item["image"]
+            img_path = basename(item["path"])
+            text_seq = item["text_seq"]
+            text = decode_text(text_seq, dataset.alphabet)
 
-        print(f"Processing image {i+1}...")
+            print(
+                f'Text line {i} path {img_path} size {list(img.shape[1:])} text "{text}"'
+            )
+            write_png(untransform_image(img), f"line-{i}.png")
 
-        img = item["image"]
-        mask = item["text_mask"]
+    else:
+        # Process text detection dataset
+        for i in range(len(dataset)):
+            # This loop doesn't use `enumerate` due to mypy error.
+            item = dataset[i]
 
-        grey_img = untransform_image(img)
-        rgb_img = grey_img.expand((3, grey_img.shape[1], grey_img.shape[2]))
-        mask_hw = mask[0] > 0.5
+            print(f"Processing image {i+1}...")
 
-        seg_img = draw_segmentation_masks(rgb_img, mask_hw, alpha=0.3, colors="red")
-        write_png(seg_img, f"seg-{i}.png")
+            img = item["image"]
+            mask = item["text_mask"]
+
+            grey_img = untransform_image(img)
+            rgb_img = grey_img.expand((3, grey_img.shape[1], grey_img.shape[2]))
+            mask_hw = mask[0] > 0.5
+
+            seg_img = draw_segmentation_masks(rgb_img, mask_hw, alpha=0.3, colors="red")
+            write_png(seg_img, f"seg-{i}.png")
