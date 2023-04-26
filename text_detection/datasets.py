@@ -347,20 +347,20 @@ This matches the English "gen2" model from EasyOCR.
 
 def encode_text(text: str, alphabet: list[str], unknown_char: str) -> torch.Tensor:
     """
-    Convert `text` into a `[len(text), label]` tensor of one-hot encoded sequences.
+    Convert `text` into a `[len(text)]` tensor of class indices.
 
-    Each `label` value is the index of the character in `alphabet` + 1. The
-    label value 0 is reserved for the blank character. If a character is
-    encountered in `text` which does not appear in `alphabet`, the character
-    `unknown_char` is substituted.
+    Each class index is the index of the character in `alphabet` + 1. The class
+    0 is reserved for the blank character. If a character is encountered in
+    `text` which does not appear in `alphabet`, the character `unknown_char` is
+    substituted.
     """
-    x = torch.zeros([len(text), len(alphabet) + 1])
+    x = torch.zeros([len(text)], dtype=int)
     for i, ch in enumerate(text):
         try:
             char_idx = alphabet.index(ch)
         except ValueError:
             char_idx = alphabet.index(unknown_char)
-        x[i, char_idx + 1] = 1.0
+        x[i] = char_idx + 1
     return x
 
 
@@ -371,11 +371,8 @@ def decode_text(x: torch.Tensor, alphabet: list[str]) -> str:
     `x` is a vector of `[seq, label]` labels, where the range of `label` is
     `len(alphabet) + 1`. The label 0 is reserved for the blank character.
     """
-    seq, n_labels = x.shape
-    if n_labels != len(alphabet) + 1:
-        raise ValueError("Input class dimension does not match alphabet length")
-    char_indexes = x.argmax(1)
-    chars = [alphabet[char_indexes[i] - 1] for i in range(seq)]
+    (seq,) = x.shape
+    chars = [alphabet[x[i] - 1] for i in range(seq)]
     return "".join(chars)
 
 
