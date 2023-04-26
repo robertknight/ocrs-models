@@ -333,7 +333,11 @@ class HierText(Dataset):
                     out_fp.write(f"{ann_json}\n")
 
 
-DEFAULT_ALPHABET = "0123456789!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ €ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+DEFAULT_ALPHABET = (
+    "0123456789!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+    + chr(8364)  # Euro symbol. Escaped to work around issue in Vim + tmux.
+    + "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+)
 """
 Default alphabet used by text recognition models.
 
