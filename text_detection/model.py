@@ -177,7 +177,7 @@ class RecognitionModel(nn.Module):
         self.output = nn.Sequential(
             nn.Linear(128, n_classes),
             # nb. We use `LogSoftmax` here because `torch.nn.CTCLoss` expects log probs
-            nn.LogSoftmax(),
+            nn.LogSoftmax(dim=2),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
