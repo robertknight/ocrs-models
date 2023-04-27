@@ -372,7 +372,7 @@ def decode_text(x: torch.Tensor, alphabet: list[str]) -> str:
     `len(alphabet) + 1`. The label 0 is reserved for the blank character.
     """
     (seq,) = x.shape
-    chars = [alphabet[x[i] - 1] for i in range(seq)]
+    chars = [alphabet[x[i] - 1] if x[i] > 0 else "" for i in range(seq)]
     return "".join(chars)
 
 
