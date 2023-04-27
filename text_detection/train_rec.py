@@ -40,19 +40,21 @@ def train(
         text_seq = batch["text_seq"]
         target_lengths = batch["text_len"]
 
-        # Predict [seq, batch, class] from [batch, 1, height, width].
-        pred_seq = model(img)
+        with torch.autograd.set_detect_anomaly(True):
+            # Predict [seq, batch, class] from [batch, 1, height, width].
+            pred_seq = model(img)
 
-        # for i in range(len(text_seq)):
-        #     target_text = decode_text(text_seq[i], list(DEFAULT_ALPHABET))
-        #     pred_text = decode_text(
-        #         pred_seq[:, i, :].argmax(-1), list(DEFAULT_ALPHABET)
-        #     )
+            # for i in range(len(text_seq)):
+            #     target_text = decode_text(text_seq[i], list(DEFAULT_ALPHABET))
+            #     pred_text = decode_text(
+            #         pred_seq[:, i, :].argmax(-1), list(DEFAULT_ALPHABET)
+            #     )
+            #     print(f"Pred {pred_text} target {target_text} pred len {len(pred_text)} target len {len(target_text)}")
 
-        batch_loss = loss(pred_seq, text_seq, input_lengths, target_lengths)
-        optimizer.zero_grad()
-        batch_loss.backward()
-        optimizer.step()
+            batch_loss = loss(pred_seq, text_seq, input_lengths, target_lengths)
+            optimizer.zero_grad()
+            batch_loss.backward()
+            optimizer.step()
         mean_loss += batch_loss.item()
 
     train_iterable.clear()
@@ -94,13 +96,18 @@ def main():
     else:
         raise Exception(f"Unknown dataset type {args.dataset_type}")
 
-    train_dataset = load_dataset(args.data_dir, train=True, max_images=100)
+    train_dataset = load_dataset(args.data_dir, train=True, max_images=177)
+
+    # TODO - Investigate issue with image index 176 causing `nan` loss values.
+    # item = train_dataset[-1]
+    # print("last item", item["image"].shape, "text seq", item["text_seq"].shape)
+    # return
 
     # TODO - Check how shuffling affects HierTextRecognition caching of
     # individual images.
     train_dataloader = DataLoader(
         train_dataset,
-        batch_size=2,
+        batch_size=10,
         shuffle=True,
         collate_fn=collate_samples,
         num_workers=2,
