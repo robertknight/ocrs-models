@@ -334,14 +334,14 @@ class HierText(Dataset):
 
 
 DEFAULT_ALPHABET = (
-    "0123456789!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+    " 0123456789!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
     + chr(8364)  # Euro symbol. Escaped to work around issue in Vim + tmux.
     + "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 )
 """
 Default alphabet used by text recognition models.
 
-This matches the English "gen2" model from EasyOCR.
+This closely matches the English "gen2" model from EasyOCR.
 """
 
 
