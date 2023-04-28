@@ -589,7 +589,8 @@ running this command.
             print(
                 f'Text line {i} path {img_path} size {list(img.shape[1:])} text "{text}"'
             )
-            write_png(untransform_image(img), f"line-{i}.png")
+            text_path_safe = text.replace("/", "_").replace(":", "_")
+            write_png(untransform_image(img), f"line-{i}-{text_path_safe}.png")
 
     else:
         # Process text detection dataset
