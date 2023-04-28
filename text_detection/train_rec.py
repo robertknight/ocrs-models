@@ -40,24 +40,71 @@ def train(
         text_seq = batch["text_seq"]
         target_lengths = batch["text_len"]
 
-        with torch.autograd.set_detect_anomaly(True):
-            # Predict [seq, batch, class] from [batch, 1, height, width].
-            pred_seq = model(img)
+        # Predict [seq, batch, class] from [batch, 1, height, width].
+        pred_seq = model(img)
 
-            # for i in range(len(text_seq)):
-            #     target_text = decode_text(text_seq[i], list(DEFAULT_ALPHABET))
-            #     pred_text = decode_text(
-            #         pred_seq[:, i, :].argmax(-1), list(DEFAULT_ALPHABET)
-            #     )
-            #     print(f"Pred {pred_text} target {target_text} pred len {len(pred_text)} target len {len(target_text)}")
+        # for i in range(len(text_seq)):
+        #     target_text = decode_text(text_seq[i], list(DEFAULT_ALPHABET))
+        #     pred_text = decode_text(
+        #         pred_seq[:, i, :].argmax(-1), list(DEFAULT_ALPHABET)
+        #     )
+        #     print(f"Pred {pred_text} target {target_text} pred len {len(pred_text)} target len {len(target_text)}")
 
-            batch_loss = loss(pred_seq, text_seq, input_lengths, target_lengths)
-            optimizer.zero_grad()
-            batch_loss.backward()
-            optimizer.step()
+        batch_loss = loss(pred_seq, text_seq, input_lengths, target_lengths)
+        optimizer.zero_grad()
+        batch_loss.backward()
+        optimizer.step()
+
         mean_loss += batch_loss.item()
 
     train_iterable.clear()
+    mean_loss /= len(dataloader)
+    return mean_loss
+
+
+def test(
+    device: torch.device,
+    dataloader: DataLoader,
+    model: RecognitionModel,
+) -> float:
+    """
+    Run evaluation on a set of images.
+
+    Returns the mean loss for the dataset.
+    """
+    model.eval()
+
+    test_iterable = tqdm(dataloader)
+    test_iterable.set_description(f"Testing")
+    mean_loss = 0.0
+
+    loss = CTCLoss()
+
+    for batch_idx, batch in enumerate(test_iterable):
+        # nb. Divide input_lengths by 4 to match the downsampling that the
+        # model's CNN does.
+        input_lengths = batch["image_width"] // 4
+        img = batch["image"]
+
+        text_seq = batch["text_seq"]
+        target_lengths = batch["text_len"]
+
+        # Predict [seq, batch, class] from [batch, 1, height, width].
+        pred_seq = model(img)
+
+        for i in range(len(text_seq)):
+            target_text = decode_text(text_seq[i], list(DEFAULT_ALPHABET))
+            pred_text = decode_text(
+                pred_seq[:, i, :].argmax(-1), list(DEFAULT_ALPHABET)
+            )
+            print(
+                f"Pred {pred_text} target {target_text} pred len {len(pred_text)} target len {len(target_text)}"
+            )
+
+        batch_loss = loss(pred_seq, text_seq, input_lengths, target_lengths)
+        mean_loss += batch_loss.item()
+
+    test_iterable.clear()
     mean_loss /= len(dataloader)
     return mean_loss
 
@@ -102,12 +149,21 @@ def main():
     else:
         raise Exception(f"Unknown dataset type {args.dataset_type}")
 
-    train_dataset = load_dataset(args.data_dir, train=True, max_images=1000)
+    train_dataset = load_dataset(args.data_dir, train=True, max_images=200)
+    val_dataset = load_dataset(args.data_dir, train=False, max_images=200)
 
     # TODO - Check how shuffling affects HierTextRecognition caching of
     # individual images.
     train_dataloader = DataLoader(
         train_dataset,
+        batch_size=20,
+        shuffle=True,
+        collate_fn=collate_samples,
+        num_workers=2,
+    )
+
+    val_dataloader = DataLoader(
+        val_dataset,
         batch_size=20,
         shuffle=True,
         collate_fn=collate_samples,
@@ -127,7 +183,8 @@ def main():
 
         print(f"Epoch {epoch} train loss {train_loss}")
 
-        # TODO - Compute validation loss
+        val_loss = test(device, val_dataloader, model)
+        print(f"Epoch {epoch} validation loss {val_loss}")
 
         epoch += 1
         # TODO - Save checkpoints
