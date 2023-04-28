@@ -67,19 +67,25 @@ def collate_samples(samples: list[dict]) -> dict:
     Collate samples from a text recognition dataset.
     """
 
-    # TODO - Handle the case where a sample's text sequence is longer than
-    # the maximum allowed given the width of the image. This is needed as the
-    # CTC loss restricts the length of the target sequence to be at most the
-    # length of the input.
+    def text_len(sample: dict) -> int:
+        return sample["text_seq"].shape[0]
 
-    max_img_len = max([s["image"].shape[-1] for s in samples])
-    max_text_len = max([s["text_seq"].shape[0] for s in samples])
+    def image_width(sample: dict) -> int:
+        return sample["image"].shape[-1]
+
+    max_img_len = max([image_width(s) for s in samples])
+    max_text_len = max([text_len(s) for s in samples])
+
+    # Remove samples where the target text is longer than the image width
+    # after downsampling by the model's CNN, which reduces the width by 4x.
+    # CTC loss requires that the target sequence length is <= the input length.
+    samples = [s for s in samples if text_len(s) <= image_width(s) // 4]
 
     for s in samples:
-        s["text_len"] = s["text_seq"].shape[0]
+        s["text_len"] = text_len(s)
         s["text_seq"] = F.pad(s["text_seq"], [0, max_text_len - s["text_len"]])
 
-        s["image_width"] = s["image"].shape[-1]
+        s["image_width"] = image_width(s)
         s["image"] = F.pad(s["image"], [0, max_img_len - s["image_width"]])
 
     return default_collate(samples)
@@ -96,18 +102,13 @@ def main():
     else:
         raise Exception(f"Unknown dataset type {args.dataset_type}")
 
-    train_dataset = load_dataset(args.data_dir, train=True, max_images=177)
-
-    # TODO - Investigate issue with image index 176 causing `nan` loss values.
-    # item = train_dataset[-1]
-    # print("last item", item["image"].shape, "text seq", item["text_seq"].shape)
-    # return
+    train_dataset = load_dataset(args.data_dir, train=True, max_images=1000)
 
     # TODO - Check how shuffling affects HierTextRecognition caching of
     # individual images.
     train_dataloader = DataLoader(
         train_dataset,
-        batch_size=10,
+        batch_size=20,
         shuffle=True,
         collate_fn=collate_samples,
         num_workers=2,
