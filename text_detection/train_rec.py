@@ -43,15 +43,14 @@ def train(
         # Predict [seq, batch, class] from [batch, 1, height, width].
         pred_seq = model(img)
 
+        # Preview decoded text for first batch in the dataset.
         if batch_idx == 0:
             for i in range(len(text_seq)):
                 y = text_seq[i]
                 x = pred_seq[:, i, :].argmax(-1)
                 target_text = decode_text(y, list(DEFAULT_ALPHABET))
                 pred_text = decode_text(x, list(DEFAULT_ALPHABET))
-                print(
-                    f"Pred {pred_text} target {target_text} pred len {len(pred_text)} target len {len(target_text)}"
-                )
+                print(f'Test pred "{pred_text}" target "{target_text}"')
 
         batch_loss = loss(pred_seq, text_seq, input_lengths, target_lengths)
         optimizer.zero_grad()
@@ -96,14 +95,13 @@ def test(
             # Predict [seq, batch, class] from [batch, 1, height, width].
             pred_seq = model(img)
 
+            # Preview decoded text for first batch in the dataset.
             for i in range(len(text_seq)):
                 y = text_seq[i]
                 x = pred_seq[:, i, :].argmax(-1)
                 target_text = decode_text(y, list(DEFAULT_ALPHABET))
                 pred_text = decode_text(x, list(DEFAULT_ALPHABET))
-                print(
-                    f"Pred {pred_text} target {target_text} pred len {len(pred_text)} target len {len(target_text)}"
-                )
+                print(f'Test pred "{pred_text}" target "{target_text}"')
 
             batch_loss = loss(pred_seq, text_seq, input_lengths, target_lengths)
             mean_loss += batch_loss.item()
