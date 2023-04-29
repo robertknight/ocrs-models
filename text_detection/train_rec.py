@@ -1,4 +1,5 @@
 from argparse import ArgumentParser
+import math
 from typing import Callable
 
 import torch
@@ -59,6 +60,12 @@ def train(
                 print(f'Train pred "{pred_text}" target "{target_text}"')
 
         batch_loss = loss(pred_seq, text_seq, input_lengths, target_lengths)
+
+        if math.isnan(batch_loss.item()):
+            raise Exception(
+                "Training produced invalid loss. Check input and target lengths are compatible with CTC loss"
+            )
+
         optimizer.zero_grad()
         batch_loss.backward()
         optimizer.step()
