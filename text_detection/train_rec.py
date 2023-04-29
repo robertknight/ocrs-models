@@ -129,7 +129,7 @@ def ctc_input_and_target_compatible(input_len: int, target: torch.Tensor) -> boo
     """
     Return true if a given input and target are compatible with CTC loss.
 
-    The CTC loss function requires that the input length >= the target length.
+    The CTC loss function requires `input_length >= max(1, target_length)`.
 
     Additionally for every position in the target that has the same label as
     the previous position, the input will need an extra blank symbol to separate
@@ -140,7 +140,7 @@ def ctc_input_and_target_compatible(input_len: int, target: torch.Tensor) -> boo
     :param target: 1D tensor of class indices
     """
     target_len = target.shape[0]
-    min_input_len = target_len
+    min_input_len = max(1, target_len)
     for i in range(1, target_len):
         if target[i - 1] == target[i]:
             min_input_len += 1
