@@ -14,6 +14,7 @@ from .datasets import (
     decode_text,
 )
 from .model import RecognitionModel
+from .train import save_checkpoint
 
 
 def train(
@@ -196,8 +197,9 @@ def main():
         val_loss = test(device, val_dataloader, model)
         print(f"Epoch {epoch} validation loss {val_loss}")
 
+        save_checkpoint("text-rec-checkpoint.pt", model, optimizer, epoch=epoch)
+
         epoch += 1
-        # TODO - Save checkpoints
 
 
 if __name__ == "__main__":
