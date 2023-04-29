@@ -41,7 +41,7 @@ def train(
     for batch_idx, batch in enumerate(train_iterable):
         # nb. Divide input_lengths by 4 to match the downsampling that the
         # model's CNN does.
-        input_lengths = batch["image_width"] // 4
+        input_lengths = batch["image_width"].div(4, rounding_mode="floor")
         img = batch["image"].to(device)
 
         text_seq = batch["text_seq"].to(device)
@@ -99,7 +99,7 @@ def test(
         for batch_idx, batch in enumerate(test_iterable):
             # nb. Divide input_lengths by 4 to match the downsampling that the
             # model's CNN does.
-            input_lengths = batch["image_width"] // 4
+            input_lengths = batch["image_width"].div(4, rounding_mode="floor")
             img = batch["image"].to(device)
 
             text_seq = batch["text_seq"].to(device)
