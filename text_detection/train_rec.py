@@ -55,7 +55,7 @@ def train(
                 x = pred_seq[:, i, :].argmax(-1)
                 target_text = decode_text(y, list(DEFAULT_ALPHABET))
                 pred_text = ctc_greedy_decode_text(x, list(DEFAULT_ALPHABET))
-                print(f'Test pred "{pred_text}" target "{target_text}"')
+                print(f'Train pred "{pred_text}" target "{target_text}"')
 
         batch_loss = loss(pred_seq, text_seq, input_lengths, target_lengths)
         optimizer.zero_grad()
