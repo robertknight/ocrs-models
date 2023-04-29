@@ -80,29 +80,30 @@ def test(
 
     loss = CTCLoss()
 
-    for batch_idx, batch in enumerate(test_iterable):
-        # nb. Divide input_lengths by 4 to match the downsampling that the
-        # model's CNN does.
-        input_lengths = batch["image_width"] // 4
-        img = batch["image"]
+    with torch.no_grad():
+        for batch_idx, batch in enumerate(test_iterable):
+            # nb. Divide input_lengths by 4 to match the downsampling that the
+            # model's CNN does.
+            input_lengths = batch["image_width"] // 4
+            img = batch["image"]
 
-        text_seq = batch["text_seq"]
-        target_lengths = batch["text_len"]
+            text_seq = batch["text_seq"]
+            target_lengths = batch["text_len"]
 
-        # Predict [seq, batch, class] from [batch, 1, height, width].
-        pred_seq = model(img)
+            # Predict [seq, batch, class] from [batch, 1, height, width].
+            pred_seq = model(img)
 
-        for i in range(len(text_seq)):
-            target_text = decode_text(text_seq[i], list(DEFAULT_ALPHABET))
-            pred_text = decode_text(
-                pred_seq[:, i, :].argmax(-1), list(DEFAULT_ALPHABET)
-            )
-            print(
-                f"Pred {pred_text} target {target_text} pred len {len(pred_text)} target len {len(target_text)}"
-            )
+            for i in range(len(text_seq)):
+                y = text_seq[i]
+                x = pred_seq[:, i, :].argmax(-1)
+                target_text = decode_text(y, list(DEFAULT_ALPHABET))
+                pred_text = decode_text(x, list(DEFAULT_ALPHABET))
+                print(
+                    f"Pred {pred_text} target {target_text} pred len {len(pred_text)} target len {len(target_text)}"
+                )
 
-        batch_loss = loss(pred_seq, text_seq, input_lengths, target_lengths)
-        mean_loss += batch_loss.item()
+            batch_loss = loss(pred_seq, text_seq, input_lengths, target_lengths)
+            mean_loss += batch_loss.item()
 
     test_iterable.clear()
     mean_loss /= len(dataloader)
