@@ -474,7 +474,12 @@ class HierTextRecognition(Dataset):
             print(
                 f"Shape mismatch {line_img.shape} vs {mask.shape} line height {line_height} min y {min_y} max y {max_y} image size {img.shape}"
             )
-        line_img = line_img * mask
+
+        # Line images have a single channel with values in [-0.5, 0.5]. Mask off
+        # the part of the image outside the text line and set their value to
+        # -0.5 (representing black).
+        background = torch.full(line_img.shape, -0.5) * (1.0 - mask)
+        line_img = background + line_img * mask
 
         aspect_ratio = line_width / line_height
         line_img = resize(
