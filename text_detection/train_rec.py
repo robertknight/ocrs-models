@@ -156,8 +156,8 @@ def main():
     else:
         raise Exception(f"Unknown dataset type {args.dataset_type}")
 
-    train_dataset = load_dataset(args.data_dir, train=True, max_images=200)
-    val_dataset = load_dataset(args.data_dir, train=False, max_images=200)
+    train_dataset = load_dataset(args.data_dir, train=True, max_images=2000)
+    val_dataset = load_dataset(args.data_dir, train=False, max_images=20)
 
     # TODO - Check how shuffling affects HierTextRecognition caching of
     # individual images.
