@@ -183,6 +183,9 @@ def main():
     parser = ArgumentParser(description="Train text recognition model.")
     parser.add_argument("dataset_type", type=str, choices=["hiertext"])
     parser.add_argument("data_dir")
+    parser.add_argument(
+        "--max-images", type=int, help="Maximum number of items to train on"
+    )
     args = parser.parse_args()
 
     # Set to aid debugging of initial text recognition model
@@ -193,8 +196,16 @@ def main():
     else:
         raise Exception(f"Unknown dataset type {args.dataset_type}")
 
-    train_dataset = load_dataset(args.data_dir, train=True, max_images=2000)
-    val_dataset = load_dataset(args.data_dir, train=False, max_images=20)
+    max_images = args.max_images
+    if max_images:
+        validation_max_images = max(10, int(max_images * 0.1))
+    else:
+        validation_max_images = None
+
+    train_dataset = load_dataset(args.data_dir, train=True, max_images=max_images)
+    val_dataset = load_dataset(
+        args.data_dir, train=False, max_images=validation_max_images
+    )
 
     # TODO - Check how shuffling affects HierTextRecognition caching of
     # individual images.
