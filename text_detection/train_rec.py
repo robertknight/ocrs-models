@@ -185,6 +185,7 @@ def main():
     parser.add_argument("dataset_type", type=str, choices=["hiertext"])
     parser.add_argument("data_dir")
     parser.add_argument("--checkpoint", type=str, help="Model checkpoint to load")
+    parser.add_argument("--export", type=str, help="Export model to ONNX format")
     parser.add_argument(
         "--max-images", type=int, help="Maximum number of items to train on"
     )
@@ -239,6 +240,21 @@ def main():
     if args.checkpoint:
         checkpoint = load_checkpoint(args.checkpoint, model, optimizer, device)
         epoch = checkpoint["epoch"]
+
+    if args.export:
+        test_batch = next(iter(val_dataloader))
+        torch.onnx.export(
+            model,
+            test_batch["image"],
+            args.export,
+            input_names=["line_image"],
+            output_names=["chars"],
+            dynamic_axes={
+                "line_image": {0: "batch", 3: "seq"},
+                "chars": {0: "out_seq"},
+            },
+        )
+        return
 
     while True:
         train_loss = train(epoch, device, train_dataloader, model, optimizer)
