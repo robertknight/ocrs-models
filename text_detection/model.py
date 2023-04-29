@@ -159,10 +159,23 @@ class RecognitionModel(nn.Module):
         n_classes = len(alphabet) + 1
 
         self.conv = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=3, padding="same"),
+            nn.Conv2d(
+                1,
+                32,
+                kernel_size=3,
+                # Equivalent to "same" padding for a kernel size of 3.
+                # PyTorch's ONNX export doesn't support the "same" keyword.
+                padding=(1, 1),
+            ),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2),
-            nn.Conv2d(32, 64, kernel_size=3, padding="same"),
+            nn.Conv2d(
+                32,
+                64,
+                kernel_size=3,
+                # Equivalent to "same" padding for a kernel size of 3.
+                padding=(1, 1),
+            ),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2),
         )
