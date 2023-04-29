@@ -376,6 +376,35 @@ def decode_text(x: torch.Tensor, alphabet: list[str]) -> str:
     return "".join(chars)
 
 
+def ctc_greedy_decode_text(x: torch.Tensor, alphabet: list[str]) -> str:
+    """
+    Perform greedy CTC decoding of a sequence to text.
+
+    `x` is a vector of `[seq, label]` labels, where the range of `label` is
+    `len(alphabet) + 1`. The label 0 is reserved for the blank character.
+    """
+    (seq,) = x.shape
+    chars = []
+
+    last_cls = None
+    for i in range(seq):
+        cls = x[i]
+
+        # Skip repeated labels.
+        if cls == last_cls:
+            continue
+
+        last_cls = cls
+
+        # Skip blanks.
+        if cls == 0:
+            continue
+
+        chars.append(alphabet[cls - 1])
+
+    return "".join(chars)
+
+
 def clamp(val: int, min_val: int, max_val: int) -> int:
     return max(min_val, min(val, max_val))
 

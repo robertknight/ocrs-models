@@ -7,7 +7,12 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, default_collate
 from tqdm import tqdm
 
-from .datasets import DEFAULT_ALPHABET, HierTextRecognition, decode_text
+from .datasets import (
+    DEFAULT_ALPHABET,
+    HierTextRecognition,
+    ctc_greedy_decode_text,
+    decode_text,
+)
 from .model import RecognitionModel
 
 
@@ -49,7 +54,7 @@ def train(
                 y = text_seq[i]
                 x = pred_seq[:, i, :].argmax(-1)
                 target_text = decode_text(y, list(DEFAULT_ALPHABET))
-                pred_text = decode_text(x, list(DEFAULT_ALPHABET))
+                pred_text = ctc_greedy_decode_text(x, list(DEFAULT_ALPHABET))
                 print(f'Test pred "{pred_text}" target "{target_text}"')
 
         batch_loss = loss(pred_seq, text_seq, input_lengths, target_lengths)
@@ -100,7 +105,7 @@ def test(
                 y = text_seq[i]
                 x = pred_seq[:, i, :].argmax(-1)
                 target_text = decode_text(y, list(DEFAULT_ALPHABET))
-                pred_text = decode_text(x, list(DEFAULT_ALPHABET))
+                pred_text = ctc_greedy_decode_text(x, list(DEFAULT_ALPHABET))
                 print(f'Test pred "{pred_text}" target "{target_text}"')
 
             batch_loss = loss(pred_seq, text_seq, input_lengths, target_lengths)
