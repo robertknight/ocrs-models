@@ -6,7 +6,7 @@ import os
 from os.path import basename
 import pickle
 import pickletools
-from typing import Callable, TextIO, cast
+from typing import Callable, Optional, TextIO, cast
 
 import cv2
 import numpy as np
@@ -424,7 +424,7 @@ class HierTextRecognition(Dataset):
         train=True,
         transform=None,
         max_images=None,
-        alphabet: list[str] | None = None,
+        alphabet: Optional[list[str]] = None,
         output_height: int = 64,
     ):
         super().__init__()
@@ -595,15 +595,14 @@ running this command.
     args = parser.parse_args()
 
     load_dataset: Callable[..., DDI100 | HierText | HierTextRecognition]
-    match args.dataset_type:
-        case "ddi":
-            load_dataset = DDI100
-        case "hiertext":
-            load_dataset = HierText
-        case "hiertext-rec":
-            load_dataset = HierTextRecognition
-        case _:
-            raise Exception(f"Unknown dataset type {args.dataset_type}")
+    if args.dataset_type == "ddi":
+        load_dataset = DDI100
+    elif args.dataset_type == "hiertext":
+        load_dataset = HierText
+    elif args.dataset_type == "hiertext-rec":
+        load_dataset = HierTextRecognition
+    else:
+        raise Exception(f"Unknown dataset type {args.dataset_type}")
 
     dataset = load_dataset(
         args.root_dir, train=args.subset == "train", max_images=args.max_images
