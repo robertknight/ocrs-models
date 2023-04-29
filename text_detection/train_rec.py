@@ -35,9 +35,9 @@ def train(
         # nb. Divide input_lengths by 4 to match the downsampling that the
         # model's CNN does.
         input_lengths = batch["image_width"] // 4
-        img = batch["image"]
+        img = batch["image"].to(device)
 
-        text_seq = batch["text_seq"]
+        text_seq = batch["text_seq"].to(device)
         target_lengths = batch["text_len"]
 
         # Predict [seq, batch, class] from [batch, 1, height, width].
@@ -88,9 +88,9 @@ def test(
             # nb. Divide input_lengths by 4 to match the downsampling that the
             # model's CNN does.
             input_lengths = batch["image_width"] // 4
-            img = batch["image"]
+            img = batch["image"].to(device)
 
-            text_seq = batch["text_seq"]
+            text_seq = batch["text_seq"].to(device)
             target_lengths = batch["text_len"]
 
             # Predict [seq, batch, class] from [batch, 1, height, width].
