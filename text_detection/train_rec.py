@@ -145,6 +145,9 @@ def main():
     parser.add_argument("data_dir")
     args = parser.parse_args()
 
+    # Set to aid debugging of initial text recognition model
+    torch.manual_seed(1234)
+
     if args.dataset_type == "hiertext":
         load_dataset = HierTextRecognition
     else:
