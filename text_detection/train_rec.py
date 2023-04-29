@@ -109,12 +109,13 @@ def test(
             pred_seq = model(img)
 
             # Preview decoded text for first batch in the dataset.
-            for i in range(len(text_seq)):
-                y = text_seq[i]
-                x = pred_seq[:, i, :].argmax(-1)
-                target_text = decode_text(y, list(DEFAULT_ALPHABET))
-                pred_text = ctc_greedy_decode_text(x, list(DEFAULT_ALPHABET))
-                print(f'Test pred "{pred_text}" target "{target_text}"')
+            if batch_idx == 0:
+                for i in range(len(text_seq)):
+                    y = text_seq[i]
+                    x = pred_seq[:, i, :].argmax(-1)
+                    target_text = decode_text(y, list(DEFAULT_ALPHABET))
+                    pred_text = ctc_greedy_decode_text(x, list(DEFAULT_ALPHABET))
+                    print(f'Test pred "{pred_text}" target "{target_text}"')
 
             batch_loss = loss(pred_seq, text_seq, input_lengths, target_lengths)
             mean_loss += batch_loss.item()
