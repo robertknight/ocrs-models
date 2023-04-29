@@ -124,6 +124,28 @@ def test(
     return mean_loss
 
 
+def ctc_input_and_target_compatible(input_len: int, target: torch.Tensor) -> bool:
+    """
+    Return true if a given input and target are compatible with CTC loss.
+
+    The CTC loss function requires that the input length >= the target length.
+
+    Additionally for every position in the target that has the same label as
+    the previous position, the input will need an extra blank symbol to separate
+    the repeated labels. This is because CTC decoding discards adjacent
+    repeated symbols.
+
+    :param input_len: Length of input sequence / width of image
+    :param target: 1D tensor of class indices
+    """
+    target_len = target.shape[0]
+    min_input_len = target_len
+    for i in range(1, target_len):
+        if target[i - 1] == target[i]:
+            min_input_len += 1
+    return input_len >= min_input_len
+
+
 def collate_samples(samples: list[dict]) -> dict:
     """
     Collate samples from a text recognition dataset.
@@ -138,10 +160,14 @@ def collate_samples(samples: list[dict]) -> dict:
     max_img_len = max([image_width(s) for s in samples])
     max_text_len = max([text_len(s) for s in samples])
 
-    # Remove samples where the target text is longer than the image width
-    # after downsampling by the model's CNN, which reduces the width by 4x.
-    # CTC loss requires that the target sequence length is <= the input length.
-    samples = [s for s in samples if text_len(s) <= image_width(s) // 4]
+    # Remove samples where the target text is incompatible with the width of
+    # the image after downsampling by the model's CNN, which reduces the
+    # width by 4x.
+    samples = [
+        s
+        for s in samples
+        if ctc_input_and_target_compatible(image_width(s) // 4, s["text_seq"])
+    ]
 
     for s in samples:
         s["text_len"] = text_len(s)
