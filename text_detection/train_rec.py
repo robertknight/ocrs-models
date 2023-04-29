@@ -15,7 +15,7 @@ from .datasets import (
     decode_text,
 )
 from .model import RecognitionModel
-from .train import save_checkpoint
+from .train import load_checkpoint, save_checkpoint
 
 
 def train(
@@ -184,6 +184,7 @@ def main():
     parser = ArgumentParser(description="Train text recognition model.")
     parser.add_argument("dataset_type", type=str, choices=["hiertext"])
     parser.add_argument("data_dir")
+    parser.add_argument("--checkpoint", type=str, help="Model checkpoint to load")
     parser.add_argument(
         "--max-images", type=int, help="Maximum number of items to train on"
     )
@@ -234,6 +235,11 @@ def main():
     print(f"Modal param count {total_params}")
 
     epoch = 0
+
+    if args.checkpoint:
+        checkpoint = load_checkpoint(args.checkpoint, model, optimizer, device)
+        epoch = checkpoint["epoch"]
+
     while True:
         train_loss = train(epoch, device, train_dataloader, model, optimizer)
 
