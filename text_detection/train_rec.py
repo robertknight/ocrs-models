@@ -184,6 +184,7 @@ def main():
     parser = ArgumentParser(description="Train text recognition model.")
     parser.add_argument("dataset_type", type=str, choices=["hiertext"])
     parser.add_argument("data_dir")
+    parser.add_argument("--batch-size", type=int, default=20)
     parser.add_argument("--checkpoint", type=str, help="Model checkpoint to load")
     parser.add_argument("--export", type=str, help="Export model to ONNX format")
     parser.add_argument(
@@ -214,7 +215,7 @@ def main():
     # individual images.
     train_dataloader = DataLoader(
         train_dataset,
-        batch_size=20,
+        batch_size=args.batch_size,
         shuffle=True,
         collate_fn=collate_samples,
         num_workers=2,
@@ -222,7 +223,7 @@ def main():
 
     val_dataloader = DataLoader(
         val_dataset,
-        batch_size=20,
+        batch_size=args.batch_size,
         shuffle=True,
         collate_fn=collate_samples,
         num_workers=2,
