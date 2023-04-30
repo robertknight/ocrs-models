@@ -511,9 +511,9 @@ class HierTextRecognition(Dataset):
         line_img = background + line_img * mask
 
         aspect_ratio = line_width / line_height
-        line_img = resize(
-            line_img, [self.output_height, int(self.output_height * aspect_ratio)]
-        )
+        output_width = max(10, int(self.output_height * aspect_ratio))
+
+        line_img = resize(line_img, [self.output_height, output_width])
 
         # Encode the corresponding character sequence as a one-hot vector.
         text = text_line["text"]
