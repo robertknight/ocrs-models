@@ -354,7 +354,7 @@ def encode_text(text: str, alphabet: list[str], unknown_char: str) -> torch.Tens
     `text` which does not appear in `alphabet`, the character `unknown_char` is
     substituted.
     """
-    x = torch.zeros([len(text)], dtype=int)
+    x = torch.zeros(len(text), dtype=torch.int32)
     for i, ch in enumerate(text):
         try:
             char_idx = alphabet.index(ch)
@@ -556,7 +556,7 @@ class HierTextRecognition(Dataset):
 
             with open(lines_file, "w") as out_fp:
                 for ann in tqdm(annotations):
-                    lines = []
+                    lines: list[dict] = []
                     for para in ann["paragraphs"]:
                         for line in para["lines"]:
                             line_data = {
@@ -594,13 +594,14 @@ running this command.
     )
     args = parser.parse_args()
 
-    load_dataset: Callable[..., DDI100 | HierText | HierTextRecognition]
+    # Explicitly cast dataset constructors to a common type to avoid mypy error.
+    DatasetConstructor = Callable[..., DDI100 | HierText | HierTextRecognition]
     if args.dataset_type == "ddi":
-        load_dataset = DDI100
+        load_dataset = cast(DatasetConstructor, DDI100)
     elif args.dataset_type == "hiertext":
-        load_dataset = HierText
+        load_dataset = cast(DatasetConstructor, HierText)
     elif args.dataset_type == "hiertext-rec":
-        load_dataset = HierTextRecognition
+        load_dataset = cast(DatasetConstructor, HierTextRecognition)
     else:
         raise Exception(f"Unknown dataset type {args.dataset_type}")
 
