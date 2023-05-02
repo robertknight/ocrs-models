@@ -163,9 +163,7 @@ class RecognitionModel(nn.Module):
                 1,
                 32,
                 kernel_size=3,
-                # Equivalent to "same" padding for a kernel size of 3.
-                # PyTorch's ONNX export doesn't support the "same" keyword.
-                padding=(1, 1),
+                padding=(1, 1),  # "same" padding
             ),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2),
@@ -173,22 +171,35 @@ class RecognitionModel(nn.Module):
                 32,
                 64,
                 kernel_size=3,
-                # Equivalent to "same" padding for a kernel size of 3.
-                padding=(1, 1),
+                padding=(1, 1),  # "same" padding
             ),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2),
+            nn.Conv2d(
+                64,
+                128,
+                kernel_size=3,
+                padding=(1, 1),  # "same" padding
+            ),
+            nn.ReLU(),
+            nn.Conv2d(
+                128,
+                128,
+                kernel_size=3,
+                padding=(1, 1),  # "same" padding
+            ),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=(2, 1)),
         )
         img_height = 64
-        self.linear = nn.Sequential(nn.Linear(img_height // 4 * 64, 64), nn.ReLU())
+        self.linear = nn.Sequential(nn.Linear(img_height // 8 * 128, 128), nn.ReLU())
 
         # TODO - Add dropout to LSTM modules?
         # TODO - Use `num_layers` instead of two separate LSTM modules?
-        self.lstm1 = nn.LSTM(64, 128, bidirectional=True)
-        self.lstm2 = nn.LSTM(256, 64, bidirectional=True)
+        self.lstm = nn.LSTM(128, 128, bidirectional=True, num_layers=2)
 
         self.output = nn.Sequential(
-            nn.Linear(128, n_classes),
+            nn.Linear(256, n_classes),
             # nb. We use `LogSoftmax` here because `torch.nn.CTCLoss` expects log probs
             nn.LogSoftmax(dim=2),
         )
@@ -207,7 +218,6 @@ class RecognitionModel(nn.Module):
         # Reduce feature size for LSTM input
         x = self.linear(x)
 
-        x, _ = self.lstm1(x)
-        x, _ = self.lstm2(x)
+        x, _ = self.lstm(x)
 
         return self.output(x)
