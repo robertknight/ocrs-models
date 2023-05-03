@@ -173,6 +173,7 @@ class RecognitionModel(nn.Module):
                 kernel_size=3,
                 padding=(1, 1),  # "same" padding
             ),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2),
             nn.Conv2d(
@@ -188,6 +189,7 @@ class RecognitionModel(nn.Module):
                 kernel_size=3,
                 padding=(1, 1),  # "same" padding
             ),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=(2, 1)),
         )
