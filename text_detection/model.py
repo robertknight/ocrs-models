@@ -192,9 +192,25 @@ class RecognitionModel(nn.Module):
             nn.BatchNorm2d(128),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=(2, 1)),
+            nn.Conv2d(
+                128,
+                128,
+                kernel_size=3,
+                padding=(1, 1),  # "same" padding
+            ),
+            nn.ReLU(),
+            nn.Conv2d(
+                128,
+                128,
+                kernel_size=3,
+                padding=(1, 1),  # "same" padding
+            ),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=(2, 1)),
         )
         img_height = 64
-        self.linear = nn.Sequential(nn.Linear(img_height // 8 * 128, 128), nn.ReLU())
+        self.linear = nn.Sequential(nn.Linear(img_height // 16 * 128, 128), nn.ReLU())
 
         # TODO - Add dropout to LSTM modules?
         # TODO - Use `num_layers` instead of two separate LSTM modules?
