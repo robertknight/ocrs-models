@@ -1,5 +1,4 @@
 from argparse import ArgumentParser
-from functools import lru_cache
 import gzip
 import json
 import os
@@ -435,9 +434,11 @@ class HierTextRecognition(Dataset):
 
         if train:
             self._img_dir = f"{root_dir}/train"
+            self._cache_dir = f"{root_dir}/train-lines-cache"
             annotations_file = f"{root_dir}/gt/train.jsonl.gz"
         else:
             self._img_dir = f"{root_dir}/validation"
+            self._cache_dir = f"{root_dir}/validation-lines-cache"
             annotations_file = f"{root_dir}/gt/validation.jsonl.gz"
 
         if not os.path.exists(self._img_dir):
@@ -458,9 +459,42 @@ class HierTextRecognition(Dataset):
         self.transform = transform
         self.output_height = output_height
 
-    @lru_cache(maxsize=100)
-    def _get_image(self, path: str) -> torch.Tensor:
-        return transform_image(read_image(path, ImageReadMode.GRAY))
+    def _get_line_image(
+        self, image_id: str, min_x: int, max_x: int, min_y: int, max_y: int
+    ) -> torch.Tensor:
+        """
+        Load a cached greyscale text line image.
+
+        `image_id` is the full image from which the text line is being extracted,
+        the other params are the bounding box coordinates of the text line
+        within the image.
+        """
+
+        assert min_x >= 0 and min_y >= 0 and max_x >= min_x and max_y >= min_y
+
+        cache_path = f"{self._cache_dir}/{image_id}/{min_x}_{min_y}_{max_x}_{max_y}.png"
+        if not os.path.exists(cache_path):
+            img_path = f"{self._img_dir}/{image_id}.jpg"
+            img = read_image(img_path, ImageReadMode.GRAY)
+            _, img_height, img_width = img.shape
+
+            min_x = clamp(min_x, 0, img_width - 1)
+            max_x = clamp(max_x, 0, img_width - 1)
+            min_y = clamp(min_y, 0, img_height - 1)
+            max_y = clamp(max_y, 0, img_height - 1)
+
+            line_img = img[:, min_y:max_y, min_x:max_x]
+
+            os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+
+            # Write image to a temporary path. If the dataset is being read
+            # concurrently by multiple processes, this avoids one of them
+            # potentially seeing an incomplete cached image written by another.
+            tmp_path = cache_path + ".tmp"
+            write_png(line_img, tmp_path)
+            os.rename(tmp_path, cache_path)
+
+        return transform_image(read_image(cache_path, ImageReadMode.GRAY))
 
     def __len__(self):
         return len(self._text_lines)
@@ -475,27 +509,20 @@ class HierTextRecognition(Dataset):
         text_line = json.loads(self._text_lines[idx])
         img_id = text_line["image_id"]
 
-        # Load full image.
-        img_path = f"{self._img_dir}/{img_id}.jpg"
-        img = self._get_image(img_path)
-        _, img_height, img_width = img.shape
+        # Get line bounding box in image
+        line_poly = [(coord[0], coord[1]) for coord in text_line["vertices"]]
+        min_x = max(0, min([x for x, y in line_poly]))
+        max_x = max(min_x, max([x for x, y in line_poly]))
+        min_y = max(0, min([y for x, y in line_poly]))
+        max_y = max(min_y, max([y for x, y in line_poly]))
 
-        # Extract just the current line from the full image.
-        line_poly = [
-            (clamp(coord[0], 0, img_width - 1), clamp(coord[1], 0, img_height - 1))
-            for coord in text_line["vertices"]
-        ]
-        min_x = min([x for x, y in line_poly])
-        max_x = max([x for x, y in line_poly])
-        min_y = min([y for x, y in line_poly])
-        max_y = max([y for x, y in line_poly])
+        # Load or create cached line image
+        line_img = self._get_line_image(img_id, min_x, max_x, min_y, max_y)
+        _, line_height, line_width = line_img.shape
 
         for i, (x, y) in enumerate(line_poly):
             line_poly[i] = (x - min_x, y - min_y)
-        line_width = max_x - min_x
-        line_height = max_y - min_y
 
-        line_img = img[:, min_y:max_y, min_x:max_x]
         mask = generate_mask(line_width, line_height, [line_poly], shrink_dist=0.0)
         mask = torch.unsqueeze(mask, 0)  # Add channel dimension
 
@@ -528,7 +555,6 @@ class HierTextRecognition(Dataset):
         #     mask = transformed[1]
 
         return {
-            "path": img_path,
             "image": line_img,
             "text_seq": text_seq,
         }
