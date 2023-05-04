@@ -1,5 +1,6 @@
 from argparse import ArgumentParser
 import math
+import os
 from typing import Callable
 
 import torch
@@ -7,6 +8,7 @@ from torch.nn import CTCLoss
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, default_collate
 from tqdm import tqdm
+import wandb
 
 from .datasets import (
     DEFAULT_ALPHABET,
@@ -193,7 +195,8 @@ def main():
     args = parser.parse_args()
 
     # Set to aid debugging of initial text recognition model
-    torch.manual_seed(1234)
+    pytorch_seed = 1234
+    torch.manual_seed(pytorch_seed)
 
     if args.dataset_type == "hiertext":
         load_dataset = HierTextRecognition
@@ -257,6 +260,19 @@ def main():
         )
         return
 
+    # Enable experiment tracking via Weights and Biases if API key set.
+    enable_wandb = bool(os.environ.get("WANDB_API_KEY"))
+    if enable_wandb:
+        wandb.init(
+            project="text-recognition",
+            config={
+                "batch_size": args.batch_size,
+                "dataset_size": len(train_dataset),
+                "model_params": total_params,
+                "pytorch_seed": pytorch_seed,
+            },
+        )
+
     while True:
         train_loss = train(epoch, device, train_dataloader, model, optimizer)
 
@@ -264,6 +280,9 @@ def main():
 
         val_loss = test(device, val_dataloader, model)
         print(f"Epoch {epoch} validation loss {val_loss}")
+
+        if enable_wandb:
+            wandb.log({"train_loss": train_loss, "val_loss": val_loss})
 
         save_checkpoint("text-rec-checkpoint.pt", model, optimizer, epoch=epoch)
 

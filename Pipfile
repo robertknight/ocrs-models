@@ -11,6 +11,7 @@ pillow = "*"
 tqdm = "*"
 opencv-python = "*"
 shapely = "*"
+wandb = "*"
 
 [dev-packages]
 black = "*"
