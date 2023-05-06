@@ -537,8 +537,11 @@ class HierTextRecognition(Dataset):
         background = torch.full(line_img.shape, -0.5) * (1.0 - mask)
         line_img = background + line_img * mask
 
+        # Scale the width along with the height, within limits. The lower limit
+        # avoids errors caused by images being zero-width after downsampling.
+        # The upper limit bounds memory use by a single batch.
         aspect_ratio = line_width / line_height
-        output_width = max(10, int(self.output_height * aspect_ratio))
+        output_width = min(800, max(10, int(self.output_height * aspect_ratio)))
 
         line_img = resize(line_img, [self.output_height, output_width], antialias=True)
 
