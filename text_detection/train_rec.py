@@ -222,6 +222,7 @@ def main():
         shuffle=True,
         collate_fn=collate_samples,
         num_workers=2,
+        pin_memory=True,
     )
 
     val_dataloader = DataLoader(
@@ -230,6 +231,7 @@ def main():
         shuffle=True,
         collate_fn=collate_samples,
         num_workers=2,
+        pin_memory=True,
     )
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
