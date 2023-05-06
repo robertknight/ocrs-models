@@ -214,10 +214,10 @@ class RecognitionModel(nn.Module):
 
         # TODO - Add dropout to LSTM modules?
         # TODO - Use `num_layers` instead of two separate LSTM modules?
-        self.lstm = nn.LSTM(128, 128, bidirectional=True, num_layers=2)
+        self.lstm = nn.LSTM(128, 256, bidirectional=True, num_layers=2)
 
         self.output = nn.Sequential(
-            nn.Linear(256, n_classes),
+            nn.Linear(512, n_classes),
             # nb. We use `LogSoftmax` here because `torch.nn.CTCLoss` expects log probs
             nn.LogSoftmax(dim=2),
         )
