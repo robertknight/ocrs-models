@@ -149,6 +149,12 @@ def ctc_input_and_target_compatible(input_len: int, target: torch.Tensor) -> boo
     return input_len >= min_input_len
 
 
+def round_up(val: int, unit: int) -> int:
+    """Round up `val` to the nearest multiple of `unit`."""
+    rem = unit - val % unit
+    return val + rem
+
+
 def collate_samples(samples: list[dict]) -> dict:
     """
     Collate samples from a text recognition dataset.
@@ -160,8 +166,12 @@ def collate_samples(samples: list[dict]) -> dict:
     def image_width(sample: dict) -> int:
         return sample["image"].shape[-1]
 
-    max_img_len = max([image_width(s) for s in samples])
-    max_text_len = max([text_len(s) for s in samples])
+    # Determine width of batched tensors. We round up the value to reduce the
+    # variation in tensor sizes across batches. Having too many distinct tensor
+    # sizes has been observed to lead to memory fragmentation and ultimately
+    # memory exhaustion when training on GPUs.
+    max_img_len = round_up(max([image_width(s) for s in samples]), 250)
+    max_text_len = round_up(max([text_len(s) for s in samples]), 250)
 
     # Remove samples where the target text is incompatible with the width of
     # the image after downsampling by the model's CNN, which reduces the
