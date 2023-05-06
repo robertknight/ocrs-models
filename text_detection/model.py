@@ -172,6 +172,9 @@ class RecognitionModel(nn.Module):
                 64,
                 kernel_size=3,
                 padding=(1, 1),  # "same" padding
+                # Don't use biases for Conv2d when followed directly by batch norm,
+                # per https://pytorch.org/tutorials/recipes/recipes/tuning_guide.html#disable-bias-for-convolutions-directly-followed-by-a-batch-norm.
+                bias=False,
             ),
             nn.BatchNorm2d(64),
             nn.ReLU(),
@@ -188,6 +191,7 @@ class RecognitionModel(nn.Module):
                 128,
                 kernel_size=3,
                 padding=(1, 1),  # "same" padding
+                bias=False,
             ),
             nn.BatchNorm2d(128),
             nn.ReLU(),
@@ -204,6 +208,7 @@ class RecognitionModel(nn.Module):
                 128,
                 kernel_size=3,
                 padding=(1, 1),  # "same" padding
+                bias=False,
             ),
             nn.BatchNorm2d(128),
             nn.ReLU(),
