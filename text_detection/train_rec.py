@@ -200,6 +200,9 @@ def main():
     parser.add_argument("--checkpoint", type=str, help="Model checkpoint to load")
     parser.add_argument("--export", type=str, help="Export model to ONNX format")
     parser.add_argument(
+        "--max-epochs", type=int, help="Maximum number of epochs to train for"
+    )
+    parser.add_argument(
         "--max-images", type=int, help="Maximum number of items to train on"
     )
     args = parser.parse_args()
@@ -285,7 +288,7 @@ def main():
             },
         )
 
-    while True:
+    while args.max_epochs is None or epoch < args.max_epochs:
         train_loss = train(epoch, device, train_dataloader, model, optimizer)
 
         print(f"Epoch {epoch} train loss {train_loss}")
