@@ -217,7 +217,7 @@ class RecognitionModel(nn.Module):
         img_height = 64
         self.linear = nn.Sequential(nn.Linear(img_height // 16 * 128, 128), nn.ReLU())
 
-        self.lstm = nn.LSTM(128, 256, bidirectional=True, num_layers=2, dropout=0.4)
+        self.lstm = nn.LSTM(128, 256, bidirectional=True, num_layers=2, dropout=0.2)
 
         self.output = nn.Sequential(
             nn.Linear(512, n_classes),
