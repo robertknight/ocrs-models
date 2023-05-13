@@ -213,14 +213,21 @@ class RecognitionModel(nn.Module):
             nn.BatchNorm2d(128),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=(2, 1)),
+            nn.Conv2d(
+                128,
+                128,
+                kernel_size=(2, 2),
+                padding=(1, 1),  # "same" padding
+                bias=False,
+            ),
+            nn.BatchNorm2d(128),
+            nn.AvgPool2d(kernel_size=(4, 1)),
         )
-        img_height = 64
-        self.linear = nn.Sequential(nn.Linear(img_height // 16 * 128, 256), nn.ReLU())
 
-        self.gru = nn.GRU(256, 304, bidirectional=True, num_layers=2, dropout=0.2)
+        self.gru = nn.GRU(128, 256, bidirectional=True, num_layers=2, dropout=0.2)
 
         self.output = nn.Sequential(
-            nn.Linear(608, n_classes),
+            nn.Linear(512, n_classes),
             # nb. We use `LogSoftmax` here because `torch.nn.CTCLoss` expects log probs
             nn.LogSoftmax(dim=2),
         )
@@ -230,14 +237,11 @@ class RecognitionModel(nn.Module):
 
         x = self.conv(x)
 
-        # Reshape from (N, 64, H/4, W/4) to (W/4, N, 64, H/4)
+        # Reshape from NCHW to WNCH
         x = torch.permute(x, (3, 0, 1, 2))
 
-        # Combine last two dims to get (W/4, N, H/4 * 64)
+        # Combine last two dims to get WNx(CH)
         x = torch.reshape(x, (x.shape[0], x.shape[1], -1))
-
-        # Reduce feature size for LSTM input
-        x = self.linear(x)
 
         x, _ = self.gru(x)
 
