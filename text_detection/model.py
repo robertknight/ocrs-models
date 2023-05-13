@@ -224,7 +224,7 @@ class RecognitionModel(nn.Module):
             nn.AvgPool2d(kernel_size=(4, 1)),
         )
 
-        self.gru = nn.GRU(128, 256, bidirectional=True, num_layers=2, dropout=0.2)
+        self.rnn = nn.RNN(128, 256, bidirectional=True, num_layers=2, dropout=0.2)
 
         self.output = nn.Sequential(
             nn.Linear(512, n_classes),
@@ -243,6 +243,6 @@ class RecognitionModel(nn.Module):
         # Combine last two dims to get WNx(CH)
         x = torch.reshape(x, (x.shape[0], x.shape[1], -1))
 
-        x, _ = self.gru(x)
+        x, _ = self.rnn(x)
 
         return self.output(x)
