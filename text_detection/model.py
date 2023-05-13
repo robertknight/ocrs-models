@@ -217,10 +217,10 @@ class RecognitionModel(nn.Module):
         img_height = 64
         self.linear = nn.Sequential(nn.Linear(img_height // 16 * 128, 256), nn.ReLU())
 
-        self.gru = nn.GRU(256, 256, bidirectional=True, num_layers=2, dropout=0.2)
+        self.gru = nn.GRU(256, 304, bidirectional=True, num_layers=2, dropout=0.2)
 
         self.output = nn.Sequential(
-            nn.Linear(512, n_classes),
+            nn.Linear(608, n_classes),
             # nb. We use `LogSoftmax` here because `torch.nn.CTCLoss` expects log probs
             nn.LogSoftmax(dim=2),
         )
