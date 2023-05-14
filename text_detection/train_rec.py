@@ -287,6 +287,7 @@ def main():
                 "pytorch_seed": pytorch_seed,
             },
         )
+        wandb.watch(model)
 
     while args.max_epochs is None or epoch < args.max_epochs:
         train_loss = train(epoch, device, train_dataloader, model, optimizer)
