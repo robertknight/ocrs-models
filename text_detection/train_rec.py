@@ -49,8 +49,12 @@ def train(
         text_seq = batch["text_seq"].to(device)
         target_lengths = batch["text_len"]
 
-        # Predict [seq, batch, class] from [batch, 1, height, width].
-        pred_seq = model(img)
+        optimizer.zero_grad()
+
+        with torch.autocast(device_type=device.type, dtype=torch.bfloat16):
+            # Predict [seq, batch, class] from [batch, 1, height, width].
+            pred_seq = model(img)
+            batch_loss = loss(pred_seq, text_seq, input_lengths, target_lengths)
 
         # Preview decoded text for first batch in the dataset.
         if batch_idx == 0:
@@ -61,14 +65,11 @@ def train(
                 pred_text = ctc_greedy_decode_text(x, list(DEFAULT_ALPHABET))
                 print(f'Train pred "{pred_text}" target "{target_text}"')
 
-        batch_loss = loss(pred_seq, text_seq, input_lengths, target_lengths)
-
         if math.isnan(batch_loss.item()):
             raise Exception(
                 "Training produced invalid loss. Check input and target lengths are compatible with CTC loss"
             )
 
-        optimizer.zero_grad()
         batch_loss.backward()
         optimizer.step()
 

@@ -243,6 +243,8 @@ class RecognitionModel(nn.Module):
         # Combine last two dims to get WNx(CH)
         x = torch.reshape(x, (x.shape[0], x.shape[1], -1))
 
-        x, _ = self.gru(x)
+        # PyTorch doesn't support GRU with bfloat16.
+        with torch.autocast(x.device.type, enabled=False):
+            x, _ = self.gru(x.float())
 
         return self.output(x)
