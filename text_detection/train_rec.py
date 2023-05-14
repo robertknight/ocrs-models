@@ -54,7 +54,7 @@ def train(
 
         # Preview decoded text for first batch in the dataset.
         if batch_idx == 0:
-            for i in range(len(text_seq)):
+            for i in range(min(10, len(text_seq))):
                 y = text_seq[i]
                 x = pred_seq[:, i, :].argmax(-1)
                 target_text = decode_text(y, list(DEFAULT_ALPHABET))
@@ -112,7 +112,7 @@ def test(
 
             # Preview decoded text for first batch in the dataset.
             if batch_idx == 0:
-                for i in range(len(text_seq)):
+                for i in range(min(10, len(text_seq))):
                     y = text_seq[i]
                     x = pred_seq[:, i, :].argmax(-1)
                     target_text = decode_text(y, list(DEFAULT_ALPHABET))
