@@ -224,7 +224,7 @@ class RecognitionModel(nn.Module):
             nn.AvgPool2d(kernel_size=(4, 1)),
         )
 
-        self.gru = nn.GRU(128, 256, bidirectional=True, num_layers=2, dropout=0.2)
+        self.gru = nn.GRU(128, 256, bidirectional=True, num_layers=2)
 
         self.output = nn.Sequential(
             nn.Linear(512, n_classes),
