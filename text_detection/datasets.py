@@ -408,6 +408,19 @@ def clamp(val: int, min_val: int, max_val: int) -> int:
     return max(min_val, min(val, max_val))
 
 
+def bounding_box_size(vertices: list[tuple[int, int]]) -> tuple[int, int]:
+    """
+    Return the width and height of the bounding box of a list of vertices.
+
+    Vertices are specified as [x, y] coordinate tuples or lists.
+    """
+    min_x = min(v[0] for v in vertices)
+    max_x = max(v[0] for v in vertices)
+    min_y = min(v[1] for v in vertices)
+    max_y = max(v[1] for v in vertices)
+    return (max_x - min_x, max_y - min_y)
+
+
 class HierTextRecognition(Dataset):
     """
     HierText dataset for text recognition.
@@ -580,6 +593,23 @@ class HierTextRecognition(Dataset):
         ):
             return
 
+        # Minimum size of lines that will be used for training.
+        MIN_WIDTH = 10
+        MIN_HEIGHT = 10
+
+        # Min ratio of area(union of word bounding boxes) and area(line
+        # bounding box). A ratio below this threshold likely indicates that the
+        # line is partially illegible.
+        MIN_WORD_TO_LINE_AREA_RATIO = 0.8
+
+        total = 0
+        total_usable = 0
+        total_legible = 0
+        total_horizontal = 0
+        total_size_ok = 0
+        total_handwritten = 0
+        total_word_to_line_area_ratio_ok = 0
+
         print(f"Extracting text line annotations from {annotations_file}")
         with gzip.open(annotations_file) as in_fp:
             annotations = json.load(in_fp)["annotations"]
@@ -589,13 +619,71 @@ class HierTextRecognition(Dataset):
                     lines: list[dict] = []
                     for para in ann["paragraphs"]:
                         for line in para["lines"]:
+                            vertices = line["vertices"]
+                            width, height = bounding_box_size(vertices)
+                            words_width, words_height = bounding_box_size(
+                                [
+                                    vertex
+                                    for word in line["words"]
+                                    for vertex in word["vertices"]
+                                ]
+                            )
+                            word_line_area_ratio = (words_width * words_height) / (
+                                width * height
+                            )
+                            area_ratio_ok = (
+                                word_line_area_ratio >= MIN_WORD_TO_LINE_AREA_RATIO
+                            )
+                            legible = line["legible"]
+
+                            # Exclude vertical lines, as the text recognition
+                            # model is not set up to handle these.
+                            horizontal = not line["vertical"]
+
+                            # Exclude very small lines, as these are likely to
+                            # be illegible.
+                            size_ok = width >= MIN_WIDTH and height >= MIN_HEIGHT
+
+                            total += 1
+                            if legible:
+                                total_legible += 1
+                            if horizontal:
+                                total_horizontal += 1
+                            if size_ok:
+                                total_size_ok += 1
+                            if area_ratio_ok:
+                                total_word_to_line_area_ratio_ok += 1
+                            if line["handwritten"]:
+                                total_handwritten += 1
+
+                            usable = (
+                                legible and size_ok and horizontal and area_ratio_ok
+                            )
+                            if not usable:
+                                continue
+                            total_usable += 1
+
                             line_data = {
                                 "image_id": ann["image_id"],
-                                "vertices": line["vertices"],
+                                "vertices": vertices,
                                 "text": line["text"],
                             }
                             ann_json = json.dumps(line_data)
                             out_fp.write(f"{ann_json}\n")
+
+        # Display statistics about the percentages of lines which were kept /
+        # excluded for different reasons.
+        stats = {
+            "Total lines": total,
+            "Total usable for training": total_usable,
+            "Legible": total_legible,
+            "Horizontal": total_horizontal,
+            f"Width >= {MIN_WIDTH} and Height >= {MIN_HEIGHT}": total_size_ok,
+            f"Words/line area ratio >= {MIN_WORD_TO_LINE_AREA_RATIO}": total_word_to_line_area_ratio_ok,
+        }
+        for description, value in stats.items():
+            percent = round((value / total) * 100, 1)
+            print(f"{description}: {value} ({percent}%)")
 
 
 if __name__ == "__main__":
