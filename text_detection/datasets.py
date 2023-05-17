@@ -602,6 +602,10 @@ class HierTextRecognition(Dataset):
         # line is partially illegible.
         MIN_WORD_TO_LINE_AREA_RATIO = 0.8
 
+        # Min width/height ratio of line bounding box. This filters out text
+        # lines which are severely rotated (eg. by 90 degrees).
+        MIN_ASPECT_RATIO = 1.0
+
         total = 0
         total_usable = 0
         total_legible = 0
@@ -609,6 +613,7 @@ class HierTextRecognition(Dataset):
         total_size_ok = 0
         total_handwritten = 0
         total_word_to_line_area_ratio_ok = 0
+        total_aspect_ok = 0
 
         print(f"Extracting text line annotations from {annotations_file}")
         with gzip.open(annotations_file) as in_fp:
@@ -621,6 +626,9 @@ class HierTextRecognition(Dataset):
                         for line in para["lines"]:
                             vertices = line["vertices"]
                             width, height = bounding_box_size(vertices)
+                            aspect_ratio = width / height
+                            aspect_ratio_ok = aspect_ratio >= MIN_ASPECT_RATIO
+
                             words_width, words_height = bounding_box_size(
                                 [
                                     vertex
@@ -653,11 +661,17 @@ class HierTextRecognition(Dataset):
                                 total_size_ok += 1
                             if area_ratio_ok:
                                 total_word_to_line_area_ratio_ok += 1
+                            if aspect_ratio_ok:
+                                total_aspect_ok += 1
                             if line["handwritten"]:
                                 total_handwritten += 1
 
                             usable = (
-                                legible and size_ok and horizontal and area_ratio_ok
+                                legible
+                                and size_ok
+                                and horizontal
+                                and area_ratio_ok
+                                and aspect_ratio_ok
                             )
                             if not usable:
                                 continue
@@ -678,6 +692,7 @@ class HierTextRecognition(Dataset):
             "Total usable for training": total_usable,
             "Legible": total_legible,
             "Horizontal": total_horizontal,
+            f"Aspect ratio (width/height) >= {MIN_ASPECT_RATIO}": total_aspect_ok,
             f"Width >= {MIN_WIDTH} and Height >= {MIN_HEIGHT}": total_size_ok,
             f"Words/line area ratio >= {MIN_WORD_TO_LINE_AREA_RATIO}": total_word_to_line_area_ratio_ok,
         }
