@@ -145,15 +145,31 @@ class RecognitionModel(nn.Module):
     """
     Text recognition model.
 
-    This takes images of text line as input and outputs a sequence of one-hot
-    encoded character predictions.
+    This takes NCHW images of text lines as input and outputs a sequence of
+    character predictions as a (W/4)xNxC tensor.
 
-    The model consists of a CNN to extract features, followed by a BiLSTM to
-    predict the character sequence. This follows the general structure of
-    https://keras.io/examples/vision/captcha_ocr.
+    The input images must be greyscale and have a fixed height of 64.
+
+    The result is a sequence 1/4 the length of the input, where the `C` dim is
+    the 1-based index of the character in the alphabet used to train the model.
+    The value 0 is reserved for the blank character. The result sequence needs
+    to be postprocessed with CTC decoding (eg. greedy or beam search) to recover
+    the recognized character sequence.
+
+    The model follows the general structure of CRNN [1], consisting of
+    convolutional layers to extract features, followed by a bidirectional RNN to
+    predict the character sequence.
+
+    [1] https://arxiv.org/abs/1507.05717
     """
 
     def __init__(self, alphabet: str):
+        """
+        Construct the model.
+
+        :param alphabet: Alphabet of characters that the model will recognize
+        """
+
         super().__init__()
 
         n_classes = len(alphabet) + 1
@@ -243,7 +259,7 @@ class RecognitionModel(nn.Module):
         # Combine last two dims to get WNx(CH)
         x = torch.reshape(x, (x.shape[0], x.shape[1], -1))
 
-        # PyTorch doesn't support GRU with bfloat16.
+        # Disable autocast here as PyTorch doesn't support GRU with bfloat16.
         with torch.autocast(x.device.type, enabled=False):
             x, _ = self.gru(x.float())
 
