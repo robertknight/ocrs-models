@@ -43,11 +43,20 @@ class RecognitionAccuracyStats:
         total_chars = sum(target_lengths)
         char_errors = 0
 
-        for i in range(len(target_lengths)):
-            y = targets[i]
-            x = preds[:, i, :].argmax(-1)
-            target_text = decode_text(y, list(DEFAULT_ALPHABET))
-            pred_text = ctc_greedy_decode_text(x, list(DEFAULT_ALPHABET))
+        # Convert [seq, batch, class] to [batch, seq] of char indices.
+        preds = preds.argmax(-1).transpose(0, 1)
+
+        # Convert targets and preds to `list[list[int]]`, as this is much faster
+        # for text decoding to operate on, especially if the tensors are on the
+        # GPU.
+        preds_list = preds.tolist()
+        targets_list = targets.tolist()
+
+        alphabet_chars = list(DEFAULT_ALPHABET)
+
+        for y, x in zip(targets_list, preds_list):
+            target_text = decode_text(y, alphabet_chars)
+            pred_text = ctc_greedy_decode_text(x, alphabet_chars)
             char_errors += levenshtein(target_text, pred_text)
 
         self.total_chars += total_chars

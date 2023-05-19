@@ -363,32 +363,39 @@ def encode_text(text: str, alphabet: list[str], unknown_char: str) -> torch.Tens
     return x
 
 
-def decode_text(x: torch.Tensor, alphabet: list[str]) -> str:
+def decode_text(x: torch.Tensor | list[int], alphabet: list[str]) -> str:
     """
-    Convert a one-hot encoded class vector into a text string.
+    Convert a vector of character class labels into a string.
 
-    `x` is a vector of `[seq, label]` labels, where the range of `label` is
-    `len(alphabet) + 1`. The label 0 is reserved for the blank character.
+    The range of class labels is `len(alphabet) + 1`. The label 0 is reserved
+    for the blank character.
     """
-    (seq,) = x.shape
-    chars = [alphabet[x[i] - 1] if x[i] > 0 else "" for i in range(seq)]
-    return "".join(chars)
+
+    # Indexing into a list is much faster than indexing into a 1D tensor.
+    if isinstance(x, torch.Tensor):
+        x = x.tolist()
+
+    return "".join([alphabet[char_idx - 1] for char_idx in x if char_idx > 0])
 
 
-def ctc_greedy_decode_text(x: torch.Tensor, alphabet: list[str]) -> str:
+def ctc_greedy_decode_text(x: torch.Tensor | list[int], alphabet: list[str]) -> str:
     """
     Perform greedy CTC decoding of a sequence to text.
 
-    `x` is a vector of `[seq, label]` labels, where the range of `label` is
+    The difference between this function and `decode_text` is that this function
+    skips repeated characters.
+
+    `x` is a vector of character class labels, where the range of labels is
     `len(alphabet) + 1`. The label 0 is reserved for the blank character.
     """
-    (seq,) = x.shape
-    chars = []
+    chars = ""
+
+    # Indexing into a list is much faster than indexing into a 1D tensor.
+    if isinstance(x, torch.Tensor):
+        x = x.tolist()
 
     last_cls = None
-    for i in range(seq):
-        cls = x[i]
-
+    for cls in x:
         # Skip repeated labels.
         if cls == last_cls:
             continue
@@ -399,9 +406,9 @@ def ctc_greedy_decode_text(x: torch.Tensor, alphabet: list[str]) -> str:
         if cls == 0:
             continue
 
-        chars.append(alphabet[cls - 1])
+        chars += alphabet[cls - 1]
 
-    return "".join(chars)
+    return chars
 
 
 def clamp(val: int, min_val: int, max_val: int) -> int:
