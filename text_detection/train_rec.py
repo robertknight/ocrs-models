@@ -97,6 +97,7 @@ def train(
     stats = RecognitionAccuracyStats()
 
     loss = CTCLoss()
+    total_grad_norm = 0.0
 
     for batch_idx, batch in enumerate(train_iterable):
         # nb. Divide input_lengths by 4 to match the downsampling that the
@@ -131,9 +132,22 @@ def train(
             )
 
         batch_loss.backward()
+
+        # Clip to prevent exploding gradients.
+        #
+        # See https://discuss.pytorch.org/t/proper-way-to-do-gradient-clipping/191.
+        #
+        # `max_norm` value was taken from observing typical mean norms of
+        # "healthy" minibatches.
+        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=4.0)
+        total_grad_norm += grad_norm.item()
+
         optimizer.step()
 
         mean_loss += batch_loss.item()
+
+    mean_grad_norm = total_grad_norm / len(train_iterable)
+    print(f"Mean grad norm {mean_grad_norm}")
 
     train_iterable.clear()
     mean_loss /= len(dataloader)
