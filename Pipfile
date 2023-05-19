@@ -12,6 +12,7 @@ tqdm = "*"
 opencv-python = "*"
 shapely = "*"
 wandb = "*"
+pylev = "*"
 
 [dev-packages]
 black = "*"

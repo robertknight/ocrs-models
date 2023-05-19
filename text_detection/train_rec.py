@@ -3,6 +3,7 @@ import math
 import os
 from typing import Callable
 
+from pylev import levenshtein
 import torch
 from torch.nn import CTCLoss
 import torch.nn.functional as F
@@ -20,23 +21,71 @@ from .model import RecognitionModel
 from .train import load_checkpoint, save_checkpoint
 
 
+class RecognitionAccuracyStats:
+    """
+    Computes text recognition accuracy statistics.
+    """
+
+    def __init__(self):
+        self.total_chars = 0
+        self.char_errors = 0
+
+    def update(
+        self, targets: torch.Tensor, target_lengths: list[int], preds: torch.Tensor
+    ):
+        """
+        Update running statistics given targets and predictions for a batch of images.
+
+        :param targets: [batch, seq] tensor of target character indices
+        :param target_lengths: Lengths of target sequences
+        :param preds: [seq, batch, class] tensor of character predictions
+        """
+        total_chars = sum(target_lengths)
+        char_errors = 0
+
+        for i in range(len(target_lengths)):
+            y = targets[i]
+            x = preds[:, i, :].argmax(-1)
+            target_text = decode_text(y, list(DEFAULT_ALPHABET))
+            pred_text = ctc_greedy_decode_text(x, list(DEFAULT_ALPHABET))
+            char_errors += levenshtein(target_text, pred_text)
+
+        self.total_chars += total_chars
+        self.char_errors += char_errors
+
+    def char_error_rate(self) -> float:
+        """
+        Return the overall fraction of character-level errors.
+        """
+        return self.char_errors / self.total_chars
+
+    def stats_dict(self) -> dict:
+        """
+        Return a dict of stats that is convenient for logging etc.
+        """
+        return {
+            "char_error_rate": self.char_error_rate(),
+        }
+
+
 def train(
     epoch: int,
     device: torch.device,
     dataloader: DataLoader,
     model: RecognitionModel,
     optimizer: torch.optim.Optimizer,
-) -> float:
+) -> tuple[float, RecognitionAccuracyStats]:
     """
     Run one epoch of training.
 
-    Returns the mean loss for the epoch.
+    Returns the mean loss and accuracy statistics.
     """
     model.train()
 
     train_iterable = tqdm(dataloader)
     train_iterable.set_description(f"Training (epoch {epoch})")
     mean_loss = 0.0
+    stats = RecognitionAccuracyStats()
 
     loss = CTCLoss()
 
@@ -56,6 +105,8 @@ def train(
             pred_seq = model(img)
             batch_loss = loss(pred_seq, text_seq, input_lengths, target_lengths)
 
+        stats.update(text_seq, target_lengths, pred_seq)
+
         # Preview decoded text for first batch in the dataset.
         if batch_idx == 0:
             for i in range(min(10, len(text_seq))):
@@ -63,7 +114,7 @@ def train(
                 x = pred_seq[:, i, :].argmax(-1)
                 target_text = decode_text(y, list(DEFAULT_ALPHABET))
                 pred_text = ctc_greedy_decode_text(x, list(DEFAULT_ALPHABET))
-                print(f'Train pred "{pred_text}" target "{target_text}"')
+                print(f'Sample train prediction "{pred_text}" target "{target_text}"')
 
         if math.isnan(batch_loss.item()):
             raise Exception(
@@ -77,24 +128,25 @@ def train(
 
     train_iterable.clear()
     mean_loss /= len(dataloader)
-    return mean_loss
+    return mean_loss, stats
 
 
 def test(
     device: torch.device,
     dataloader: DataLoader,
     model: RecognitionModel,
-) -> float:
+) -> tuple[float, RecognitionAccuracyStats]:
     """
     Run evaluation on a set of images.
 
-    Returns the mean loss for the dataset.
+    Returns the mean loss and accuracy statistics.
     """
     model.eval()
 
     test_iterable = tqdm(dataloader)
     test_iterable.set_description(f"Testing")
     mean_loss = 0.0
+    stats = RecognitionAccuracyStats()
 
     loss = CTCLoss()
 
@@ -111,6 +163,8 @@ def test(
             # Predict [seq, batch, class] from [batch, 1, height, width].
             pred_seq = model(img)
 
+            stats.update(text_seq, target_lengths, pred_seq)
+
             # Preview decoded text for first batch in the dataset.
             if batch_idx == 0:
                 for i in range(min(10, len(text_seq))):
@@ -118,14 +172,16 @@ def test(
                     x = pred_seq[:, i, :].argmax(-1)
                     target_text = decode_text(y, list(DEFAULT_ALPHABET))
                     pred_text = ctc_greedy_decode_text(x, list(DEFAULT_ALPHABET))
-                    print(f'Test pred "{pred_text}" target "{target_text}"')
+                    print(
+                        f'Sample test prediction "{pred_text}" target "{target_text}"'
+                    )
 
             batch_loss = loss(pred_seq, text_seq, input_lengths, target_lengths)
             mean_loss += batch_loss.item()
 
     test_iterable.clear()
     mean_loss /= len(dataloader)
-    return mean_loss
+    return mean_loss, stats
 
 
 def ctc_input_and_target_compatible(input_len: int, target: torch.Tensor) -> bool:
@@ -206,6 +262,11 @@ def main():
     parser.add_argument(
         "--max-images", type=int, help="Maximum number of items to train on"
     )
+    parser.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="Run validation on an exiting model",
+    )
     args = parser.parse_args()
 
     # Set to aid debugging of initial text recognition model
@@ -224,12 +285,6 @@ def main():
         validation_max_images = None
 
     train_dataset = load_dataset(args.data_dir, train=True, max_images=max_images)
-    val_dataset = load_dataset(
-        args.data_dir, train=False, max_images=validation_max_images
-    )
-
-    # TODO - Check how shuffling affects HierTextRecognition caching of
-    # individual images.
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
@@ -239,6 +294,9 @@ def main():
         pin_memory=True,
     )
 
+    val_dataset = load_dataset(
+        args.data_dir, train=False, max_images=validation_max_images
+    )
     val_dataloader = DataLoader(
         val_dataset,
         batch_size=args.batch_size,
@@ -276,6 +334,13 @@ def main():
         )
         return
 
+    if args.validate_only:
+        val_loss, val_stats = test(device, val_dataloader, model)
+        print(
+            f"Validation loss {val_loss} char error rate {val_stats.char_error_rate()}"
+        )
+        return
+
     # Enable experiment tracking via Weights and Biases if API key set.
     enable_wandb = bool(os.environ.get("WANDB_API_KEY"))
     if enable_wandb:
@@ -291,15 +356,28 @@ def main():
         wandb.watch(model)
 
     while args.max_epochs is None or epoch < args.max_epochs:
-        train_loss = train(epoch, device, train_dataloader, model, optimizer)
+        train_loss, train_stats = train(
+            epoch, device, train_dataloader, model, optimizer
+        )
 
-        print(f"Epoch {epoch} train loss {train_loss}")
+        print(
+            f"Epoch {epoch} train loss {train_loss} char error rate {train_stats.char_error_rate()}"
+        )
 
-        val_loss = test(device, val_dataloader, model)
-        print(f"Epoch {epoch} validation loss {val_loss}")
+        val_loss, val_stats = test(device, val_dataloader, model)
+        print(
+            f"Epoch {epoch} validation loss {val_loss} char error rate {val_stats.char_error_rate()}"
+        )
 
         if enable_wandb:
-            wandb.log({"train_loss": train_loss, "val_loss": val_loss})
+            wandb.log(
+                {
+                    "train_loss": train_loss,
+                    "train_accuracy": train_stats.stats_dict(),
+                    "val_loss": val_loss,
+                    "val_accuracy": val_stats.stats_dict(),
+                }
+            )
 
         save_checkpoint("text-rec-checkpoint.pt", model, optimizer, epoch=epoch)
 
