@@ -333,6 +333,10 @@ def main():
     model = RecognitionModel(alphabet=DEFAULT_ALPHABET).to(device)
 
     optimizer = torch.optim.Adam(model.parameters())
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, factor=0.1, patience=3, verbose=True
+    )
+
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Modal param count {total_params}")
 
@@ -391,6 +395,8 @@ def main():
         print(
             f"Epoch {epoch} validation loss {val_loss} char error rate {val_stats.char_error_rate()}"
         )
+
+        scheduler.step(val_loss)
 
         if enable_wandb:
             wandb.log(
