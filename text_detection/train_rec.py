@@ -1,4 +1,4 @@
-from argparse import ArgumentParser
+from argparse import ArgumentParser, BooleanOptionalAction
 import math
 import os
 from typing import Callable
@@ -16,6 +16,7 @@ from .datasets import (
     HierTextRecognition,
     ctc_greedy_decode_text,
     decode_text,
+    text_recognition_data_augmentations,
 )
 from .model import RecognitionModel
 from .train import load_checkpoint, save_checkpoint
@@ -276,6 +277,12 @@ def main():
     parser = ArgumentParser(description="Train text recognition model.")
     parser.add_argument("dataset_type", type=str, choices=["hiertext"])
     parser.add_argument("data_dir")
+    parser.add_argument(
+        "--augment",
+        default=True,
+        action=BooleanOptionalAction,
+        help="Enable data augmentations",
+    )
     parser.add_argument("--batch-size", type=int, default=20)
     parser.add_argument("--checkpoint", type=str, help="Model checkpoint to load")
     parser.add_argument("--export", type=str, help="Export model to ONNX format")
@@ -307,7 +314,14 @@ def main():
     else:
         validation_max_images = None
 
-    train_dataset = load_dataset(args.data_dir, train=True, max_images=max_images)
+    if args.augment:
+        augmentations = text_recognition_data_augmentations()
+    else:
+        augmentations = None
+
+    train_dataset = load_dataset(
+        args.data_dir, train=True, max_images=max_images, transform=augmentations
+    )
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,

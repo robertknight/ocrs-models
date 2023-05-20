@@ -1,4 +1,4 @@
-from argparse import ArgumentParser
+from argparse import ArgumentParser, BooleanOptionalAction
 import gzip
 import json
 import os
@@ -16,6 +16,7 @@ from torch.utils.data import Dataset
 from torchvision.io import ImageReadMode, read_image, write_png
 from torchvision.utils import draw_segmentation_masks
 from torchvision.transforms.functional import resize
+from torchvision import transforms
 from shapely.geometry import JOIN_STYLE, MultiLineString
 from shapely.geometry.polygon import LinearRing
 
@@ -557,6 +558,18 @@ class HierTextRecognition(Dataset):
         background = torch.full(line_img.shape, -0.5) * (1.0 - mask)
         line_img = background + line_img * mask
 
+        # Apply data augmentations. This may change the size of the image.
+        if self.transform:
+            line_img = self.transform(line_img)
+
+            # Brightness / contrast transforms may have moved pixel values
+            # outside of the legal range of [-0.5, 0.5] for normalized images.
+            #
+            # Clamp to bring these values back into that range.
+            line_img = line_img.clamp(-0.5, 0.5)
+
+            _, line_height, line_width = line_img.shape
+
         # Scale the width along with the height, within limits. The lower limit
         # avoids errors caused by images being zero-width after downsampling.
         # The upper limit bounds memory use by a single batch.
@@ -568,14 +581,6 @@ class HierTextRecognition(Dataset):
         # Encode the corresponding character sequence as a one-hot vector.
         text = text_line["text"]
         text_seq = encode_text(text, self.alphabet, unknown_char="?")
-
-        # TODO - Re-enable image transforms
-        # if self.transform:
-        #     # Input and target are transformed in one call to ensure same
-        #     # parameters are used for both, if transform is randomized.
-        #     transformed = self.transform(torch.stack([img, mask]))
-        #     img = transformed[0]
-        #     mask = transformed[1]
 
         return {
             "image_id": img_id,
@@ -708,6 +713,35 @@ class HierTextRecognition(Dataset):
             print(f"{description}: {value} ({percent}%)")
 
 
+def text_recognition_data_augmentations():
+    """
+    Create a set of data augmentations for use with text recognition.
+    """
+
+    # Fill color for empty space created by transforms.
+    # This is the "black" value for normalized images.
+    transform_fill = -0.5
+
+    augmentations = transforms.RandomApply(
+        [
+            transforms.RandomChoice(
+                [
+                    transforms.ColorJitter(brightness=0.1, contrast=0.1),
+                    transforms.RandomRotation(
+                        degrees=5,
+                        fill=transform_fill,
+                        expand=True,
+                        interpolation=transforms.InterpolationMode.BILINEAR,
+                    ),
+                    transforms.Pad(padding=(5, 5), fill=transform_fill),
+                ]
+            )
+        ],
+        p=0.5,
+    )
+    return augmentations
+
+
 if __name__ == "__main__":
     parser = ArgumentParser(
         description="""
@@ -724,6 +758,12 @@ running this command.
     )
     parser.add_argument("root_dir", help="Root directory of dataset")
     parser.add_argument("out_dir", help="Directory to write output images to")
+    parser.add_argument(
+        "--augment",
+        default=True,
+        action=BooleanOptionalAction,
+        help="Enable data augmentations",
+    )
     parser.add_argument(
         "--max-images", type=int, help="Maximum number of items to process"
     )
@@ -746,8 +786,16 @@ running this command.
     else:
         raise Exception(f"Unknown dataset type {args.dataset_type}")
 
+    if args.augment:
+        augmentations = text_recognition_data_augmentations()
+    else:
+        augmentations = None
+
     dataset = load_dataset(
-        args.root_dir, train=args.subset == "train", max_images=args.max_images
+        args.root_dir,
+        train=args.subset == "train",
+        max_images=args.max_images,
+        transform=augmentations,
     )
 
     print(f"Dataset length {len(dataset)}")
