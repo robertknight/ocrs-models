@@ -214,33 +214,33 @@ class RecognitionModel(nn.Module):
             nn.MaxPool2d(kernel_size=(2, 1)),
             nn.Conv2d(
                 128,
-                128,
+                256,
                 kernel_size=3,
                 padding=(1, 1),  # "same" padding
             ),
             nn.ReLU(),
             nn.Conv2d(
-                128,
-                128,
+                256,
+                256,
                 kernel_size=3,
                 padding=(1, 1),  # "same" padding
                 bias=False,
             ),
-            nn.BatchNorm2d(128),
+            nn.BatchNorm2d(256),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=(2, 1)),
             nn.Conv2d(
-                128,
-                128,
+                256,
+                256,
                 kernel_size=(2, 2),
                 padding=(1, 1),  # "same" padding
                 bias=False,
             ),
-            nn.BatchNorm2d(128),
+            nn.BatchNorm2d(256),
             nn.AvgPool2d(kernel_size=(4, 1)),
         )
 
-        self.gru = nn.GRU(128, 256, bidirectional=True, num_layers=2)
+        self.gru = nn.GRU(256, 256, bidirectional=True, num_layers=2)
 
         self.output = nn.Sequential(
             nn.Linear(512, n_classes),
