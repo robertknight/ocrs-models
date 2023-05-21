@@ -16,6 +16,7 @@ from tqdm import tqdm
 from .datasets import DDI100, HierText
 from .model import DetectionModel
 from .postprocess import box_match_metrics, extract_cc_quads
+from .train_utils import format_metrics, load_checkpoint, save_checkpoint
 
 mask_height = 800
 mask_width = int(mask_height * 0.75)
@@ -134,10 +135,6 @@ def get_metric_means(metrics_dicts: list[dict[str, float]]) -> dict[str, float]:
     return {k: mean([md.get(k, 0.0) for md in metrics_dicts]) for k in keys}
 
 
-def format_metrics(metrics: dict[str, float]) -> dict[str, str]:
-    return {k: f"{v:.3f}" for k, v in metrics.items()}
-
-
 def test(
     device: torch.device,
     dataloader: DataLoader,
@@ -187,26 +184,6 @@ def test(
 
     test_loss /= n_batches
     return test_loss, mean_metrics
-
-
-def save_checkpoint(filename: str, model: nn.Module, optimizer: Optimizer, epoch: int):
-    torch.save(
-        {
-            "epoch": epoch,
-            "model_state": model.state_dict(),
-            "optimizer_state": optimizer.state_dict(),
-        },
-        filename,
-    )
-
-
-def load_checkpoint(
-    filename: str, model: nn.Module, optimizer: Optimizer, device: torch.device
-):
-    checkpoint = torch.load(filename, map_location=device)
-    model.load_state_dict(checkpoint["model_state"])
-    optimizer.load_state_dict(checkpoint["optimizer_state"])
-    return checkpoint
 
 
 def balanced_cross_entropy_loss(

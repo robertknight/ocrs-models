@@ -19,7 +19,7 @@ from .datasets import (
     text_recognition_data_augmentations,
 )
 from .model import RecognitionModel
-from .train import load_checkpoint, save_checkpoint
+from .train_utils import TrainLoop, format_metrics, load_checkpoint, save_checkpoint
 
 
 class RecognitionAccuracyStats:
@@ -69,7 +69,7 @@ class RecognitionAccuracyStats:
         """
         return self.char_errors / self.total_chars
 
-    def stats_dict(self) -> dict:
+    def stats_dict(self) -> dict[str, float]:
         """
         Return a dict of stats that is convenient for logging etc.
         """
@@ -396,18 +396,24 @@ def main():
         )
         wandb.watch(model)
 
-    while args.max_epochs is None or epoch < args.max_epochs:
+    loop = TrainLoop(max_epochs=args.max_epochs)
+
+    while not loop.done():
         train_loss, train_stats = train(
-            epoch, device, train_dataloader, model, optimizer
+            loop.epoch, device, train_dataloader, model, optimizer
         )
-
-        print(
-            f"Epoch {epoch} train loss {train_loss} char error rate {train_stats.char_error_rate()}"
-        )
-
         val_loss, val_stats = test(device, val_dataloader, model)
+
         print(
-            f"Epoch {epoch} validation loss {val_loss} char error rate {val_stats.char_error_rate()}"
+            f"Epoch {loop.epoch} train loss {train_loss:.4f} validation loss {val_loss:.4f}"
+        )
+        print(
+            f"Epoch {loop.epoch} train metrics",
+            format_metrics(train_stats.stats_dict()),
+        )
+        print(
+            f"Epoch {loop.epoch} validation metrics",
+            format_metrics(val_stats.stats_dict()),
         )
 
         scheduler.step(val_loss)
@@ -422,9 +428,9 @@ def main():
                 }
             )
 
-        save_checkpoint("text-rec-checkpoint.pt", model, optimizer, epoch=epoch)
+        save_checkpoint("text-rec-checkpoint.pt", model, optimizer, epoch=loop.epoch)
 
-        epoch += 1
+        loop.step(val_loss)
 
 
 if __name__ == "__main__":
