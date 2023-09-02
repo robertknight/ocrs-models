@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    /* Visit https://aka.ms/tsconfig to read more about this file */
+
+    /* Language and Environment */
+    "target": "es2020",
+
+    /* Modules */
+    "module": "es2020",
+    "moduleResolution": "node",
+
+    "outDir": "./build",
+
+    /* Interop Constraints */
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* Type Checking */
+    "strict": true,
+
+    /* Completeness */
+    "skipLibCheck": true
+  }
+}
