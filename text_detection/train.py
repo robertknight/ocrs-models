@@ -209,6 +209,13 @@ def load_checkpoint(
     return checkpoint
 
 
+def trainable_params(model: nn.Module) -> int:
+    """
+    Return the number of trainable parameters (weights, biases etc.) in a model.
+    """
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
 def balanced_cross_entropy_loss(
     pred: torch.Tensor, target: torch.Tensor
 ) -> torch.Tensor:

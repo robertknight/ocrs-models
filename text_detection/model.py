@@ -264,3 +264,45 @@ class RecognitionModel(nn.Module):
             x, _ = self.gru(x.float())
 
         return self.output(x)
+
+
+class LayoutModel(nn.Module):
+    """
+    Text layout analysis model.
+
+    Inputs have shape `[N, W, D]` where N is the batch size, W is the word
+    index, D is the word feature index.
+
+    Outputs have shape `[N, W, C]` where C is a vector of binary classifications
+    for each word `[line_start, line_end]`.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+        n_features = 4
+        d_embed_in = 64
+        d_embed = 64
+        d_feedforward = 64
+        n_classes = 2
+        n_layers = 6
+        n_heads = 4
+
+        self.embed = nn.Sequential(
+            nn.Linear(n_features, d_embed_in),
+            nn.ReLU(),
+            nn.Linear(d_embed_in, d_embed),
+            nn.ReLU(),
+        )
+
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_embed, nhead=n_heads, dim_feedforward=d_feedforward
+        )
+        self.encode = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
+
+        self.classify = nn.Sequential(nn.Linear(d_embed, n_classes), nn.Sigmoid())
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.embed(x)
+        x = self.encode(x)
+        return self.classify(x)

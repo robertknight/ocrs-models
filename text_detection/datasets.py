@@ -12,6 +12,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 from tqdm import tqdm
 import torch
+import torch.nn.functional as F
 from torch.utils.data import Dataset
 from torchvision.io import ImageReadMode, read_image, write_png
 from torchvision.utils import draw_segmentation_masks
@@ -713,6 +714,185 @@ class HierTextRecognition(Dataset):
             print(f"{description}: {value} ({percent}%)")
 
 
+def intervals_overlap(a: float, b: float, c: float, d: float) -> bool:
+    """
+    Return true if the interval `[a, b]` overlaps `[c, d]`.
+    """
+    if a <= c:
+        return b > c
+    else:
+        return d > a
+
+
+class WebLayout(Dataset):
+    """
+    Layout analysis dataset produced from rendering web pages.
+    """
+
+    def __init__(
+        self,
+        root_dir: str,
+        randomize=False,
+        padded_size: Optional[int] = None,
+        train=True,
+        max_images: Optional[int] = None,
+        filter: Optional[Callable[[str], bool]] = None,
+    ):
+        """
+        Construct dataset from JSON files in `root_dir`.
+
+        :param root_dir: Directory to load dataset from
+        :param filter: Filter images by file path
+        :param max_images: Maximum number of images to load from dataset
+        :param randomize:
+            If true, coordinates of OCR boxes will be transformed randomly
+            before being returned by `__getitem__`.
+        :param padded_size:
+            If set, pad the first dimension of the returned inputs and targets
+            to the given length.
+        :param train:
+            If true, loading the training set. Otherwise load the validation
+            split.
+        """
+        super().__init__()
+
+        self.randomize = randomize
+        self.root_dir = root_dir
+        self.padded_size = padded_size
+
+        files = [
+            f
+            for f in os.listdir(root_dir)
+            if os.path.isfile(os.path.join(root_dir, f)) and f.endswith(".json")
+        ]
+
+        train_split = round(len(files) * 4 / 5)
+        if train:
+            self._files = files[:train_split]
+        else:
+            self._files = files[train_split:]
+
+        if max_images is not None:
+            self._files = self._files[:max_images]
+
+        if filter:
+            self._files = [f for f in self._files if filter(f)]
+
+    def __len__(self):
+        return len(self._files)
+
+    def __getitem__(self, idx: int):
+        """
+        Returns tuple of (word_features, labels) tensors.
+
+        `word_features` is an `[N, D]` tensor of feature vectors for each
+        word box. The feature vector for each word has the format
+        `[left, top, right, bottom, width, height]`.
+
+        `labels` is a tensor of `[word_index, C]` binary classifications
+        for the word. The classifications for each word are [line_start, line_end].
+        """
+
+        words = []
+        labels = []
+        in_path = os.path.join(self.root_dir, self._files[idx])
+
+        if self.randomize:
+            a, b, c = torch.rand(3).tolist()
+            max_offset = 25
+            max_scale = 0.1
+            jitter_x = -max_offset + a * (max_offset * 2)
+            jitter_y = -max_offset + b * (max_offset * 2)
+            scale = (1.0 - max_scale) + c * (max_scale * 2)
+        else:
+            jitter_x = 0.0
+            jitter_y = 0.0
+            scale = 1.0
+
+        with open(in_path) as file:
+            content = json.load(file)
+            viewport_width = int(content["resolution"]["width"])
+            viewport_height = int(content["resolution"]["height"])
+
+            def norm_x_coord(coord):
+                return (coord / viewport_width) - 0.5
+
+            def norm_y_coord(coord):
+                return (coord / viewport_height) - 0.5
+
+            def transform(coords):
+                left, top, right, bottom = coords
+
+                # Apply augmentation to the un-normalized coordinates.
+                left = left * scale + jitter_x
+                right = right * scale + jitter_x
+                top = top * scale + jitter_y
+                bottom = bottom * scale + jitter_y
+
+                # Normalize coordinates such that the center of the image is
+                # at (0, 0).
+                left = norm_x_coord(left)
+                top = norm_y_coord(top)
+                right = norm_x_coord(right)
+                bottom = norm_y_coord(bottom)
+
+                return [left, top, right, bottom]
+
+            for para in content["paragraphs"]:
+                para_words = para["words"]
+
+                for idx, word in enumerate(para_words):
+                    left, top, right, bottom = transform(word["coords"])
+                    words.append([left, top, right, bottom])
+
+                    line_start = False
+                    line_end = False
+                    prev_word = para_words[idx - 1] if idx > 0 else None
+
+                    if prev_word is None:
+                        line_start = True
+                    else:
+                        # If there is no vertical overlap between the prev and
+                        # current words, assume a new line. There is a case
+                        # where this will give the wrong result: if a paragraph
+                        # is split over multiple columns and the last line of
+                        # a column overlaps the first line of the next.
+                        prev_word_coords = transform(prev_word["coords"])
+                        prev_word_top = prev_word_coords[1]
+                        prev_word_bottom = prev_word_coords[3]
+                        if not intervals_overlap(
+                            prev_word_top, prev_word_bottom, top, bottom
+                        ):
+                            line_start = True
+
+                    if idx == len(para_words) - 1:
+                        line_end = True
+                    else:
+                        next_word_coords = transform(para_words[idx + 1]["coords"])
+                        next_word_top = next_word_coords[1]
+                        next_word_bottom = next_word_coords[3]
+                        if not intervals_overlap(
+                            top, bottom, next_word_top, next_word_bottom
+                        ):
+                            line_end = True
+
+                    labels.append([int(line_start), int(line_end)])
+
+        input_ = torch.Tensor(words)
+        labels = torch.Tensor(labels)
+
+        if self.padded_size:
+            pad_len = self.padded_size - input_.shape[0]
+            if pad_len > 0:
+                input_ = F.pad(input_, (0, 0, 0, pad_len))
+                labels = F.pad(labels, (0, 0, 0, pad_len))
+            else:
+                input_ = input_[0 : self.padded_size]
+                labels = labels[0 : self.padded_size]
+
+        return (input_, labels)
+
+
 def text_recognition_data_augmentations():
     """
     Create a set of data augmentations for use with text recognition.
@@ -742,6 +922,64 @@ def text_recognition_data_augmentations():
     return augmentations
 
 
+def draw_word_boxes(
+    img_path: str,
+    width: int,
+    height: int,
+    word_boxes: torch.Tensor,
+    labels: torch.Tensor,
+):
+    """
+    Draw word bounding boxes on an image and color them according to their labels.
+
+    :param word_boxes: A (W, D) tensor of word bounding boxes, where D is a
+        [left, top, right, bottom] feature vector. Coordinates are assumed to
+        be scaled and offset such that (0, 0) is the center of the image and
+        the edges have coordinates of 1.
+    :param labels: A (W, L) tensor of labels, where L is a (line_start, line_end)
+        category vector.
+    """
+    n_words, n_feats = word_boxes.shape
+    assert n_feats == 4
+
+    n_labels, n_cats = labels.shape
+    assert n_labels == n_words
+    assert n_cats == 2
+
+    img = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(img)
+
+    def scale_x(coord: float) -> float:
+        return (coord + 0.5) * width
+
+    def scale_y(coord: float) -> float:
+        return (coord + 0.5) * height
+
+    for i in range(n_words):
+        left, top, right, bottom = word_boxes[i].tolist()
+        left, top, right, bottom = (
+            scale_x(left),
+            scale_y(top),
+            scale_x(right),
+            scale_y(bottom),
+        )
+        line_start, line_end = labels[i].tolist()
+
+        match (line_start, line_end):
+            case (1, 1):
+                color = "green"
+            case (1, 0):
+                color = "blue"
+            case (0, 1):
+                color = "red"
+            case _:
+                color = "black"
+
+        draw.rectangle((left, top, right, bottom), fill=None, outline=color, width=1)
+
+    img.save(img_path)
+
+
 if __name__ == "__main__":
     parser = ArgumentParser(
         description="""
@@ -753,7 +991,7 @@ running this command.
     )
     parser.add_argument(
         "dataset_type",
-        choices=["ddi", "hiertext", "hiertext-rec"],
+        choices=["ddi", "hiertext", "hiertext-rec", "web-layout"],
         help="Dataset to load",
     )
     parser.add_argument("root_dir", help="Root directory of dataset")
@@ -763,6 +1001,9 @@ running this command.
         default=True,
         action=BooleanOptionalAction,
         help="Enable data augmentations",
+    )
+    parser.add_argument(
+        "--filter", type=str, help="Filter input data items by file path"
     )
     parser.add_argument(
         "--max-images", type=int, help="Maximum number of items to process"
@@ -775,64 +1016,85 @@ running this command.
     )
     args = parser.parse_args()
 
-    # Explicitly cast dataset constructors to a common type to avoid mypy error.
-    DatasetConstructor = Callable[..., DDI100 | HierText | HierTextRecognition]
-    if args.dataset_type == "ddi":
-        load_dataset = cast(DatasetConstructor, DDI100)
-    elif args.dataset_type == "hiertext":
-        load_dataset = cast(DatasetConstructor, HierText)
-    elif args.dataset_type == "hiertext-rec":
-        load_dataset = cast(DatasetConstructor, HierTextRecognition)
-    else:
-        raise Exception(f"Unknown dataset type {args.dataset_type}")
-
-    if args.augment:
-        augmentations = text_recognition_data_augmentations()
-    else:
-        augmentations = None
-
-    dataset = load_dataset(
-        args.root_dir,
-        train=args.subset == "train",
-        max_images=args.max_images,
-        transform=augmentations,
-    )
-
-    print(f"Dataset length {len(dataset)}")
-
     os.makedirs(args.out_dir, exist_ok=True)
 
-    if isinstance(dataset, HierTextRecognition):
-        # Process text recognition dataset
-        for i in range(len(dataset)):
-            item = dataset[i]
-            img = item["image"]
-            image_id = item["image_id"]
-            text_seq = item["text_seq"]
-            text = decode_text(text_seq, dataset.alphabet)
+    def filter_item(path: str) -> bool:
+        if args.filter is None:
+            return True
+        return args.filter in path
 
-            print(
-                f'Text line {i} image {image_id} size {list(img.shape[1:])} text "{text}"'
+    match args.dataset_type:
+        case "ddi" | "hiertext":
+            # Explicitly cast dataset constructors to a common type to avoid mypy error.
+            DatasetConstructor = Callable[..., DDI100 | HierText | HierTextRecognition]
+            if args.dataset_type == "ddi":
+                load_dataset = cast(DatasetConstructor, DDI100)
+            else:
+                load_dataset = cast(DatasetConstructor, HierText)
+
+            dataset = load_dataset(
+                args.root_dir,
+                train=args.subset == "train",
+                max_images=args.max_images,
             )
-            text_path_safe = text.replace("/", "_").replace(":", "_")
-            line_img_path = f"{args.out_dir}/line-{i}-{image_id}-{text_path_safe}.png"
 
-            write_png(untransform_image(img), line_img_path)
+            for i in range(len(dataset)):
+                # This loop doesn't use `enumerate` due to mypy error.
+                item = dataset[i]
 
-    else:
-        # Process text detection dataset
-        for i in range(len(dataset)):
-            # This loop doesn't use `enumerate` due to mypy error.
-            item = dataset[i]
+                print(f"Processing image {i+1}...")
 
-            print(f"Processing image {i+1}...")
+                img = item["image"]
+                mask = item["text_mask"]
 
-            img = item["image"]
-            mask = item["text_mask"]
+                grey_img = untransform_image(img)
+                rgb_img = grey_img.expand((3, grey_img.shape[1], grey_img.shape[2]))
+                mask_hw = mask[0] > 0.5
 
-            grey_img = untransform_image(img)
-            rgb_img = grey_img.expand((3, grey_img.shape[1], grey_img.shape[2]))
-            mask_hw = mask[0] > 0.5
+                seg_img = draw_segmentation_masks(
+                    rgb_img, mask_hw, alpha=0.3, colors="red"
+                )
+                write_png(seg_img, f"{args.out_dir}/seg-{i}.png")
+        case "hiertext-rec":
+            if args.augment:
+                augmentations = text_recognition_data_augmentations()
+            else:
+                augmentations = None
 
-            seg_img = draw_segmentation_masks(rgb_img, mask_hw, alpha=0.3, colors="red")
-            write_png(seg_img, f"{args.out_dir}/seg-{i}.png")
+            dataset = HierTextRecognition(
+                args.root_dir,
+                train=args.subset == "train",
+                max_images=args.max_images,
+                transform=augmentations,
+            )
+
+            for i in range(len(dataset)):
+                item = dataset[i]
+                img = item["image"]
+                image_id = item["image_id"]
+                text_seq = item["text_seq"]
+                text = decode_text(text_seq, dataset.alphabet)
+
+                print(
+                    f'Text line {i} image {image_id} size {list(img.shape[1:])} text "{text}"'
+                )
+                text_path_safe = text.replace("/", "_").replace(":", "_")
+                line_img_path = (
+                    f"{args.out_dir}/line-{i}-{image_id}-{text_path_safe}.png"
+                )
+
+                write_png(untransform_image(img), line_img_path)
+        case "web-layout":
+            dataset = WebLayout(
+                args.root_dir,
+                train=args.subset == "train",
+                max_images=args.max_images,
+                filter=filter_item,
+            )
+
+            for i in range(len(dataset)):
+                word_boxes, labels = dataset[i]
+                out_img = f"{args.out_dir}/img-{i}.png"
+                width = 1024
+                height = 768
+                draw_word_boxes(out_img, width, height, word_boxes, labels)
