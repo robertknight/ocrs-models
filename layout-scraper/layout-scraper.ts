@@ -46,7 +46,7 @@ async function scrapeTextLayout(
 
   // Un-comment to enable debugging via logging from the page.
   //
-  // page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+  // page.on("console", (msg) => console.log("PAGE LOG:", msg.text()));
 
   const layoutInfo = await page.evaluate(() => {
     /** Convert a DOMRect into a JSON-serializable array. */
@@ -90,8 +90,8 @@ async function scrapeTextLayout(
         // Skip over non-rendered text.
         continue;
       }
-      const str = currentNode.nodeValue!.trim();
-      if (str.length === 0) {
+      const str = currentNode.nodeValue!;
+      if (str.trim().length === 0) {
         continue;
       }
 
