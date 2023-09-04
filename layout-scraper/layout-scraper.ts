@@ -114,10 +114,15 @@ async function scrapeTextLayout(
         range.setStart(currentNode, offset);
         range.setEnd(currentNode, offset + word.length);
         const wordRect = range.getBoundingClientRect();
+        const trimmedWord = word.trim();
 
-        if (wordRect.width > 0 && wordRect.height > 0) {
+        if (
+          trimmedWord.length > 0 &&
+          wordRect.width > 0 &&
+          wordRect.height > 0
+        ) {
           currentPara.words.push({
-            text: word,
+            text: trimmedWord,
             coords: coordsFromRect(wordRect),
           });
         }
