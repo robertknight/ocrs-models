@@ -1,10 +1,21 @@
+import { writeFileSync } from "node:fs";
+
 import { program } from "commander";
 import puppeteer from "puppeteer";
 import type { Browser } from "puppeteer";
 
 type ScrapeOptions = {
+  /** Width to set viewport to. */
   width?: number;
+
+  /** Height to set viewport to. */
   height?: number;
+
+  /**
+   * File path that a PNG screenshot of the web page will be saved to before
+   * capturing layout information. If omitted, no screenshot is taken.
+   */
+  screenshotFile?: string;
 };
 
 /** [left, top, right, bottom] coordinates. */
@@ -43,6 +54,11 @@ async function scrapeTextLayout(
   const page = await browser.newPage();
   await page.setViewport({ width, height });
   await page.goto(url);
+
+  if (typeof options.screenshotFile === "string") {
+    const screenshot = await page.screenshot({ encoding: "binary" });
+    writeFileSync(options.screenshotFile, screenshot);
+  }
 
   // Un-comment to enable debugging via logging from the page.
   //
@@ -142,13 +158,25 @@ async function scrapeTextLayout(
   return layoutInfo;
 }
 
-program.argument("<url>", "URL to render").action(async (url: string) => {
-  const browser = await puppeteer.launch({ headless: "new" });
-  try {
-    const layoutInfo = await scrapeTextLayout(browser, url);
-    console.log(JSON.stringify(layoutInfo, null, 2));
-  } finally {
-    await browser.close();
-  }
-});
+type CLIOptions = {
+  screenshot?: string;
+};
+
+program
+  .argument("<url>", "URL to render")
+  .option("-s, --screenshot <path>", "Save screenshot to file")
+  .action(async (url: string, opts: CLIOptions) => {
+    const scrapeOpts: ScrapeOptions = {};
+    if (opts.screenshot) {
+      scrapeOpts.screenshotFile = opts.screenshot;
+    }
+
+    const browser = await puppeteer.launch({ headless: "new" });
+    try {
+      const layoutInfo = await scrapeTextLayout(browser, url, scrapeOpts);
+      console.log(JSON.stringify(layoutInfo, null, 2));
+    } finally {
+      await browser.close();
+    }
+  });
 program.parse();
