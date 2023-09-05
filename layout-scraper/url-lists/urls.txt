@@ -1,0 +1,38 @@
+# Minimal web page
+https://example.com/
+
+# Simple multi-column layout
+https://googlechrome.github.io/samples/multi-column-css/
+
+# Popular general websites.
+https://arstechnica.com
+https://news.ycombinator.com
+https://openai.com
+https://www.apple.com/iphone-14/
+https://www.bbc.co.uk/news/business-66714128
+https://www.reddit.com
+https://www.techmeme.com
+https://www.youtube.com
+
+# Wikipedia
+https://en.wikipedia.org/wiki/Chandrayaan-3
+https://en.wikipedia.org/wiki/Emmy_Noether
+https://en.wikipedia.org/wiki/Munich_Mouser
+https://en.wikipedia.org/wiki/Stochastic_gradient_descent
+
+# Depths of Wikipedia (https://twitter.com/depthsofwiki)
+https://en.m.wikipedia.org/wiki/Tux_(mascot)
+https://en.wikipedia.org/wiki/Bastard_(typeface)
+https://en.wikipedia.org/wiki/Bottle_Rack
+https://en.wikipedia.org/wiki/Chartjunk
+https://en.wikipedia.org/wiki/Chess_on_a_really_big_board
+https://en.wikipedia.org/wiki/Drunken_trees
+https://en.wikipedia.org/wiki/Exploding_trousers
+https://en.wikipedia.org/wiki/John_Walker_(runner)
+https://en.wikipedia.org/wiki/Lightning_rod_fashion
+https://en.wikipedia.org/wiki/Rabbit_of_Caerbannog
+https://en.wikipedia.org/wiki/Witch_window
+
+# Misc tech websites
+https://developer.mozilla.org/en-US/docs/Web/API/ResizeObserver
+https://llvm.org
