@@ -1,6 +1,6 @@
-import { writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
-import { program } from "commander";
+import { InvalidArgumentError, program } from "commander";
 import puppeteer from "puppeteer";
 import type { Browser } from "puppeteer";
 
@@ -159,22 +159,104 @@ async function scrapeTextLayout(
 }
 
 type CLIOptions = {
-  screenshot?: string;
+  height?: number;
+  inFile?: string;
+  outDir?: string;
+  screenshot?: boolean;
+  width?: number;
 };
 
-program
-  .argument("<url>", "URL to render")
-  .option("-s, --screenshot <path>", "Save screenshot to file")
-  .action(async (url: string, opts: CLIOptions) => {
+/**
+ * Convert a URL into a filename with no `/`s in it.
+ *
+ * This is a lossy transformation and URLs which are different but contain the
+ * same sequence of ASCII letters/numbers may be mapped to the same URL.
+ */
+function filenameForURL(url: string) {
+  // Strip protocol
+  let filename = url.replace(/^https?:\/\//, "");
+
+  // Replace special chars
+  filename = filename.replace(/[/?:]/g, "_");
+
+  // Trim trailing special chars
+  filename = filename.replace(/_+$/, "");
+
+  return filename;
+}
+
+function parseIntArg(val: string): number {
+  if (!val.match(/^[0-9]+$/)) {
+    throw new InvalidArgumentError("Must be a positive integer");
+  }
+  return parseInt(val, 10);
+}
+
+async function processURLs(browser: Browser, urls: string[], opts: CLIOptions) {
+  const outDir = opts.outDir ?? ".";
+  mkdirSync(outDir, { recursive: true });
+
+  const width = opts.width ?? 1024;
+  const height = opts.height ?? 768;
+  for (const [i, url] of urls.entries()) {
+    console.log(`Rendering ${url} (${i + 1} of ${urls.length})`);
+
     const scrapeOpts: ScrapeOptions = {};
+    const outFileBase =
+      outDir + "/" + filenameForURL(url) + `-${width}x${height}`;
     if (opts.screenshot) {
-      scrapeOpts.screenshotFile = opts.screenshot;
+      scrapeOpts.screenshotFile = `${outFileBase}.png`;
+    }
+    const layoutInfo = await scrapeTextLayout(browser, url, scrapeOpts);
+    const layoutJSON = JSON.stringify(layoutInfo, null, 2);
+    writeFileSync(`${outFileBase}.json`, layoutJSON);
+  }
+}
+
+function isValidURL(val: string) {
+  try {
+    new URL(val);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+program
+  .description(
+    "Render web pages using a headless browser and capture text layout information.",
+  )
+  .argument("[urls...]", "URLs to render")
+  .option("-i, --in-file <file>", "Read URLs from a file")
+  .option("-o, --out-dir <dir>", "Output directory")
+  .option("-s, --screenshot", "Save screenshots")
+  .option("-w, --width [width]", "Browser viewport width", parseIntArg)
+  .option("-h, --height [height]", "Browser viewport height", parseIntArg)
+  .action(async (urls: string[], opts: CLIOptions) => {
+    const browser = await puppeteer.launch({ headless: "new" });
+
+    if (opts.inFile) {
+      const urlsFromFile = readFileSync(opts.inFile, "utf8")
+        .split("\n")
+        .filter((line) => {
+          const trimmed = line.trim();
+          return trimmed.length > 0 && !trimmed.startsWith("#");
+        });
+      for (const url of urlsFromFile) {
+        urls.push(url);
+      }
     }
 
-    const browser = await puppeteer.launch({ headless: "new" });
+    urls = urls.filter((url) => {
+      if (!isValidURL(url)) {
+        console.warn(`Skipping invalid URL "${url}"`);
+        return false;
+      }
+      return true;
+    });
+
     try {
-      const layoutInfo = await scrapeTextLayout(browser, url, scrapeOpts);
-      console.log(JSON.stringify(layoutInfo, null, 2));
+      await processURLs(browser, urls, opts);
     } finally {
       await browser.close();
     }
