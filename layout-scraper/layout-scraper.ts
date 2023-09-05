@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 import { InvalidArgumentError, program } from "commander";
 import puppeteer from "puppeteer";
@@ -16,6 +16,11 @@ type ScrapeOptions = {
    * capturing layout information. If omitted, no screenshot is taken.
    */
   screenshotFile?: string;
+
+  /**
+   * Trim layout output to words that intersect viewport.
+   */
+  trim?: boolean;
 };
 
 /** [left, top, right, bottom] coordinates. */
@@ -64,7 +69,7 @@ async function scrapeTextLayout(
   //
   // page.on("console", (msg) => console.log("PAGE LOG:", msg.text()));
 
-  const layoutInfo = await page.evaluate(() => {
+  const layoutInfo = await page.evaluate((options) => {
     /** Convert a DOMRect into a JSON-serializable array. */
     const coordsFromRect = (domRect: DOMRect): BoxCoords => [
       domRect.left,
@@ -75,6 +80,9 @@ async function scrapeTextLayout(
 
     const isEmptyRect = (domRect: DOMRect) =>
       domRect.width <= 0 || domRect.height <= 0;
+
+    const intersectsViewport = (domRect: DOMRect) =>
+      domRect.top < window.innerHeight && domRect.left < window.innerWidth;
 
     /**
      * Return the nearest ancestor element of `node` that uses a non-inline
@@ -102,10 +110,16 @@ async function scrapeTextLayout(
     const range = new Range();
     let currentNode;
     while ((currentNode = walker.nextNode())) {
-      if (isEmptyRect(currentNode.parentElement!.getBoundingClientRect())) {
+      const boundingRect = currentNode.parentElement!.getBoundingClientRect();
+      if (isEmptyRect(boundingRect)) {
         // Skip over non-rendered text.
         continue;
       }
+
+      if (options.trim && !intersectsViewport(boundingRect)) {
+        continue;
+      }
+
       const str = currentNode.nodeValue!;
       if (str.trim().length === 0) {
         continue;
@@ -135,7 +149,8 @@ async function scrapeTextLayout(
         if (
           trimmedWord.length > 0 &&
           wordRect.width > 0 &&
-          wordRect.height > 0
+          wordRect.height > 0 &&
+          (!options.trim || intersectsViewport(wordRect))
         ) {
           currentPara.words.push({
             text: trimmedWord,
@@ -151,7 +166,7 @@ async function scrapeTextLayout(
       resolution: { width: window.innerWidth, height: window.innerHeight },
       paragraphs: layoutParagraphs,
     };
-  });
+  }, options);
 
   await page.close();
 
@@ -160,10 +175,12 @@ async function scrapeTextLayout(
 
 type CLIOptions = {
   height?: number;
+  incremental: boolean;
   inFile?: string;
   outDir?: string;
-  screenshot?: boolean;
+  screenshot: boolean;
   width?: number;
+  trim: boolean;
 };
 
 /**
@@ -192,6 +209,10 @@ function parseIntArg(val: string): number {
   return parseInt(val, 10);
 }
 
+function countWords(li: LayoutInfo): number {
+  return li.paragraphs.reduce((total, para) => total + para.words.length, 0);
+}
+
 async function processURLs(browser: Browser, urls: string[], opts: CLIOptions) {
   const outDir = opts.outDir ?? ".";
   mkdirSync(outDir, { recursive: true });
@@ -199,17 +220,26 @@ async function processURLs(browser: Browser, urls: string[], opts: CLIOptions) {
   const width = opts.width ?? 1024;
   const height = opts.height ?? 768;
   for (const [i, url] of urls.entries()) {
-    console.log(`Rendering ${url} (${i + 1} of ${urls.length})`);
-
-    const scrapeOpts: ScrapeOptions = {};
     const outFileBase =
       outDir + "/" + filenameForURL(url) + `-${width}x${height}`;
+    const layoutFile = `${outFileBase}.json`;
+    if (opts.incremental && existsSync(layoutFile)) {
+      continue;
+    }
+
+    const scrapeOpts: ScrapeOptions = { trim: opts.trim };
     if (opts.screenshot) {
       scrapeOpts.screenshotFile = `${outFileBase}.png`;
     }
     const layoutInfo = await scrapeTextLayout(browser, url, scrapeOpts);
     const layoutJSON = JSON.stringify(layoutInfo, null, 2);
-    writeFileSync(`${outFileBase}.json`, layoutJSON);
+
+    const nWords = countWords(layoutInfo);
+    console.log(
+      `Rendered ${url} (${i + 1} of ${urls.length}). ${nWords} words.`,
+    );
+
+    writeFileSync(layoutFile, layoutJSON);
   }
 }
 
@@ -232,6 +262,11 @@ program
   .option("-s, --screenshot", "Save screenshots")
   .option("-w, --width [width]", "Browser viewport width", parseIntArg)
   .option("-h, --height [height]", "Browser viewport height", parseIntArg)
+  .option("-n, --incremental", "Skip URLs which have already been rendered")
+  .option(
+    "-t, --trim",
+    "Trim layout output to words that intersect the viewport",
+  )
   .action(async (urls: string[], opts: CLIOptions) => {
     const browser = await puppeteer.launch({ headless: "new" });
 
