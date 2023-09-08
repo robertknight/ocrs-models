@@ -84,6 +84,36 @@ async function scrapeTextLayout(
     const intersectsViewport = (domRect: DOMRect) =>
       domRect.top < window.innerHeight && domRect.left < window.innerWidth;
 
+    const elementVisibleCache = new Map<Element, boolean>();
+
+    const computeElementIsVisible = (el: Element): boolean => {
+      if (el === document.body) {
+        return true;
+      }
+      const style = getComputedStyle(el);
+      if (style.display === "none" || style.visibility === "hidden") {
+        return false;
+      }
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        return false;
+      }
+      if (!el.parentElement) {
+        return false;
+      }
+      return computeElementIsVisible(el.parentElement);
+    };
+
+    const elementIsVisible = (el: Element): boolean => {
+      let visible = elementVisibleCache.get(el);
+      if (typeof visible === "boolean") {
+        return visible;
+      }
+      visible = computeElementIsVisible(el);
+      elementVisibleCache.set(el, visible);
+      return visible;
+    };
+
     /**
      * Return the nearest ancestor element of `node` that uses a non-inline
      * layout.
@@ -110,12 +140,13 @@ async function scrapeTextLayout(
     const range = new Range();
     let currentNode;
     while ((currentNode = walker.nextNode())) {
-      const boundingRect = currentNode.parentElement!.getBoundingClientRect();
-      if (isEmptyRect(boundingRect)) {
+      const parentElement = currentNode.parentElement!;
+
+      if (!elementIsVisible(parentElement)) {
         // Skip over non-rendered text.
         continue;
       }
-
+      const boundingRect = parentElement.getBoundingClientRect();
       if (options.trim && !intersectsViewport(boundingRect)) {
         continue;
       }
@@ -139,26 +170,24 @@ async function scrapeTextLayout(
       const currentPara = layoutParagraphs.at(-1)!;
 
       let offset = 0;
-      const words = str.split(" ");
-      for (const word of words) {
+      for (const match of str.matchAll(/\w+/g)) {
+        const offset = match.index!;
+        const word = match[0];
+
         range.setStart(currentNode, offset);
         range.setEnd(currentNode, offset + word.length);
         const wordRect = range.getBoundingClientRect();
-        const trimmedWord = word.trim();
 
         if (
-          trimmedWord.length > 0 &&
           wordRect.width > 0 &&
           wordRect.height > 0 &&
           (!options.trim || intersectsViewport(wordRect))
         ) {
           currentPara.words.push({
-            text: trimmedWord,
+            text: word,
             coords: coordsFromRect(wordRect),
           });
         }
-
-        offset += word.length + 1;
       }
     }
     return {
