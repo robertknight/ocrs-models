@@ -94,10 +94,15 @@ async function scrapeTextLayout(
       if (style.display === "none" || style.visibility === "hidden") {
         return false;
       }
+
+      // Min / max thresholds set at 1 here because some sites use boxes of
+      // width/height 1 to be visible to screen readers while not being
+      // technically hidden.
       const rect = el.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) {
+      if (rect.width <= 1 || rect.height <= 1) {
         return false;
       }
+
       if (!el.parentElement) {
         return false;
       }
