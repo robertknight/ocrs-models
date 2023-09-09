@@ -120,13 +120,17 @@ async function scrapeTextLayout(
     };
 
     /**
-     * Return the nearest ancestor element of `node` that uses a non-inline
-     * layout.
+     * Return the nearest ancestor element of `node` that uses a non-horizontal
+     * layout for its children.
      */
     const nearestBlockAncestor = (node: Node) => {
       let parent = node instanceof Element ? node : node.parentElement;
       while (parent) {
-        if (!getComputedStyle(parent).display.includes("inline")) {
+        const style = getComputedStyle(parent);
+        if (
+          !style.display.includes("inline") &&
+          !["table-cell", "table-row"].includes(style.display)
+        ) {
           return parent;
         }
         parent = parent.parentElement;
