@@ -257,6 +257,8 @@ async function processURLs(browser: Browser, urls: string[], opts: CLIOptions) {
 
   const width = opts.width ?? 1024;
   const height = opts.height ?? 768;
+  const failedURLs = [];
+
   for (const [i, url] of urls.entries()) {
     const outFileBase =
       outDir + "/" + filenameForURL(url) + `-${width}x${height}`;
@@ -265,19 +267,28 @@ async function processURLs(browser: Browser, urls: string[], opts: CLIOptions) {
       continue;
     }
 
-    const scrapeOpts: ScrapeOptions = { trim: opts.trim };
-    if (opts.screenshot) {
-      scrapeOpts.screenshotFile = `${outFileBase}.png`;
+    try {
+      const scrapeOpts: ScrapeOptions = { trim: opts.trim };
+      if (opts.screenshot) {
+        scrapeOpts.screenshotFile = `${outFileBase}.png`;
+      }
+      const layoutInfo = await scrapeTextLayout(browser, url, scrapeOpts);
+      const layoutJSON = JSON.stringify(layoutInfo, null, 2);
+
+      const nWords = countWords(layoutInfo);
+      console.log(
+        `Rendered ${url} (${i + 1} of ${urls.length}). ${nWords} words.`,
+      );
+
+      writeFileSync(layoutFile, layoutJSON);
+    } catch (err) {
+      console.error(`Processing URL "${url}" failed:`, err);
+      failedURLs.push(url);
     }
-    const layoutInfo = await scrapeTextLayout(browser, url, scrapeOpts);
-    const layoutJSON = JSON.stringify(layoutInfo, null, 2);
+  }
 
-    const nWords = countWords(layoutInfo);
-    console.log(
-      `Rendered ${url} (${i + 1} of ${urls.length}). ${nWords} words.`,
-    );
-
-    writeFileSync(layoutFile, layoutJSON);
+  if (failedURLs.length > 0) {
+    console.error(`${failedURLs.length} URLs failed`);
   }
 }
 

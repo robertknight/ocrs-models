@@ -12,8 +12,9 @@ async function fetchURLs(count) {
     );
     if (!response.ok) {
       console.error(`Non-OK response ${response.status}`);
+      continue;
     }
-    console.error(`Fetched ${i+1} of ${count} URLs`);
+    console.error(`Fetched ${i + 1} of ${count} URLs`);
     console.log(response.url);
   }
 }
