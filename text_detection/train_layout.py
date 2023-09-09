@@ -12,10 +12,35 @@ from .model import LayoutModel
 from .train import load_checkpoint, save_checkpoint, trainable_params
 
 
+def f1_score(precision: float, recall: float) -> float:
+    """
+    Return the F1 mean of precision and recall.
+
+    See https://en.wikipedia.org/wiki/F-score.
+    """
+    return 2 * (precision * recall) / (precision + recall)
+
+
+def precision_recall(preds: torch.Tensor, targets: torch.Tensor) -> tuple[float, float]:
+    """
+    Compute the precision and recall for a set of binary classifications.
+
+    :param preds: Boolean tensor of predicted classifications
+    :param targets: Boolean tensor of target classifications
+    :return: (precision, recall) tuple
+    """
+    true_results = torch.logical_and(preds, targets).sum()
+    precision = true_results / preds.sum()
+    recall = true_results / targets.sum()
+    return (precision.item(), recall.item())
+
+
 class LayoutAccuracyStats:
     def __init__(self):
-        self.total_line_start_acc = 0.0
-        self.total_line_end_acc = 0.0
+        self.total_line_start_precision = 0.0
+        self.total_line_start_recall = 0.0
+        self.total_line_end_precision = 0.0
+        self.total_line_end_recall = 0.0
         self.updates = 0
 
     def update(self, pred: torch.Tensor, target: torch.Tensor):
@@ -27,26 +52,42 @@ class LayoutAccuracyStats:
         pred_line_starts = pred[:, :, 0] >= threshold
         pred_line_ends = pred[:, :, 1] >= threshold
 
-        self.total_line_start_acc += (
-            (pred_line_starts == line_starts).float().mean().item()
+        line_start_prec, line_start_recall = precision_recall(
+            pred_line_starts, line_starts
         )
-        self.total_line_end_acc += (pred_line_ends == line_ends).float().mean().item()
+        line_end_prec, line_end_recall = precision_recall(pred_line_ends, line_ends)
 
-    def line_start_acc(self) -> float:
-        return self.total_line_start_acc / self.updates
+        self.total_line_start_precision += line_start_prec
+        self.total_line_start_recall += line_start_recall
+        self.total_line_end_precision += line_end_prec
+        self.total_line_end_recall += line_end_recall
 
-    def line_end_acc(self) -> float:
-        return self.total_line_end_acc / self.updates
+    def line_start_precision_recall(self) -> tuple[float, float]:
+        return (
+            self.total_line_start_precision / self.updates,
+            self.total_line_start_recall / self.updates,
+        )
+
+    def line_end_precision_recall(self) -> tuple[float, float]:
+        return (
+            self.total_line_end_precision / self.updates,
+            self.total_line_end_recall / self.updates,
+        )
 
     def summary(self) -> str:
-        return (
-            f"line start acc {self.line_start_acc()} line end acc {self.line_end_acc()}"
-        )
+        line_start_prec, line_start_rec = self.line_start_precision_recall()
+        line_end_prec, line_end_rec = self.line_end_precision_recall()
+
+        return f"line start prec/recall {line_start_prec:.3f}/{line_start_rec:.3f} line end prec/recall {line_end_prec:.3f}/{line_end_rec:.3f}"
 
     def stats_dict(self) -> dict:
+        line_start_prec, line_start_rec = self.line_start_precision_recall()
+        line_end_prec, line_end_rec = self.line_end_precision_recall()
         return {
-            "line_start_acc": self.line_start_acc(),
-            "line_end_acc": self.line_end_acc(),
+            "line_start_precision": line_start_prec,
+            "line_start_recall": line_start_rec,
+            "line_end_precision": line_end_prec,
+            "line_end_recall": line_end_rec,
         }
 
 
@@ -185,10 +226,6 @@ def main():
 
     if args.validate_only:
         val_loss, val_stats = test(val_dataloader, model)
-        line_start_acc, line_end_acc = (
-            val_stats.line_start_acc(),
-            val_stats.line_end_acc(),
-        )
         print(f"Epoch {epoch} val stats: {val_stats.summary()}")
         return
 
@@ -210,10 +247,6 @@ def main():
     while args.max_epochs is None or epoch < args.max_epochs:
         train_loss, train_stats = train(epoch, train_dataloader, model, optimizer)
         val_loss, val_stats = test(val_dataloader, model)
-        line_start_acc, line_end_acc = (
-            val_stats.line_start_acc(),
-            val_stats.line_end_acc(),
-        )
 
         print(f"Epoch {epoch} train loss {train_loss} val loss {val_loss}")
         print(f"Epoch {epoch} train stats: {train_stats.summary()}")
