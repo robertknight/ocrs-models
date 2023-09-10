@@ -927,10 +927,13 @@ def draw_word_boxes(
     width: int,
     height: int,
     word_boxes: torch.Tensor,
-    labels: torch.Tensor,
+    labels: Optional[torch.Tensor] = None,
+    probs: Optional[torch.Tensor] = None,
+    threshold=0.5,
 ):
     """
-    Draw word bounding boxes on an image and color them according to their labels.
+    Draw word bounding boxes on an image and color them according to labels
+    or probabilities.
 
     :param word_boxes: A (W, D) tensor of word bounding boxes, where D is a
         [left, top, right, bottom] feature vector. Coordinates are assumed to
@@ -938,13 +941,20 @@ def draw_word_boxes(
         the edges have coordinates of 1.
     :param labels: A (W, L) tensor of labels, where L is a (line_start, line_end)
         category vector.
+    :param probs: A (W,) tensor of probabilities for each word.
+    :param threshold: If `probs` is specified, probabilities above this threshold
+        are colored differently to indicate positive instances
     """
     n_words, n_feats = word_boxes.shape
     assert n_feats == 4
 
-    n_labels, n_cats = labels.shape
-    assert n_labels == n_words
-    assert n_cats == 2
+    if labels is not None:
+        n_labels, n_cats = labels.shape
+        assert n_labels == n_words
+        assert n_cats == 2
+
+    if probs is not None:
+        assert probs.shape == (n_words,)
 
     img = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(img)
@@ -963,19 +973,31 @@ def draw_word_boxes(
             scale_x(right),
             scale_y(bottom),
         )
-        line_start, line_end = labels[i].tolist()
 
-        match (line_start, line_end):
-            case (1, 1):
-                color = "green"
-            case (1, 0):
-                color = "blue"
-            case (0, 1):
-                color = "red"
-            case _:
-                color = "black"
+        if labels is not None:
+            line_start, line_end = labels[i].tolist()
+            match (line_start, line_end):
+                case (1, 1):
+                    color = "green"
+                case (1, 0):
+                    color = "blue"
+                case (0, 1):
+                    color = "red"
+                case _:
+                    color = "black"
+        elif probs is not None:
+            word_prob = probs[i].item()
+            if word_prob > threshold:
+                color = (255, 0, 0)
+            else:
+                min_val = 20
+                max_val = 255
+                prob_color = max_val - round(word_prob * (max_val - min_val))
+                color = (prob_color, prob_color, prob_color)
+        else:
+            color = "black"
 
-        draw.rectangle((left, top, right, bottom), fill=None, outline=color, width=1)
+        draw.rectangle((left, top, right, bottom), fill=None, outline=color, width=2)
 
     img.save(img_path)
 

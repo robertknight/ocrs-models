@@ -43,6 +43,11 @@ def main():
     parser.add_argument(
         "--checkpoint", required=True, type=str, help="Model checkpoint to load"
     )
+    parser.add_argument(
+        "--colors",
+        choices=["labels", "line-start-probs", "line-end-probs"],
+        help="Meaning of box colors",
+    )
     args = parser.parse_args()
 
     model = LayoutModel(return_probs=True)
@@ -63,16 +68,26 @@ def main():
         word_boxes = word_boxes.unsqueeze(0)  # Add batch dim
         label_probs = model(word_boxes)
 
-        threshold = 0.5
-        labels = label_probs > threshold
-        n_line_starts = labels[:, :, 0].sum()
-        n_line_ends = labels[:, :, 1].sum()
-        print(
-            f"Words {len(word_list)} predicted line starts {n_line_starts} line ends {n_line_ends}"
-        )
+        labels = None
+        probs = None
+
+        match args.colors:
+            case "labels":
+                threshold = 0.5
+                labels = label_probs > threshold
+                n_line_starts = labels[:, :, 0].sum()
+                n_line_ends = labels[:, :, 1].sum()
+                labels = labels[0]
+                print(
+                    f"Words {len(word_list)} predicted line starts {n_line_starts} line ends {n_line_ends}"
+                )
+            case "line-start-probs":
+                probs = label_probs[0, :, 0]
+            case "line-end-probs":
+                probs = label_probs[0, :, 1]
 
         label_img = args.output_file
-        draw_word_boxes(label_img, img_width, img_height, word_boxes[0], labels[0])
+        draw_word_boxes(label_img, img_width, img_height, word_boxes[0], labels, probs)
 
 
 if __name__ == "__main__":
