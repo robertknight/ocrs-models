@@ -45,7 +45,7 @@ def main():
     )
     args = parser.parse_args()
 
-    model = LayoutModel()
+    model = LayoutModel(return_probs=True)
     checkpoint = torch.load(args.checkpoint)
     model.load_state_dict(checkpoint["model_state"])
 

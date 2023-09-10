@@ -91,6 +91,12 @@ class LayoutAccuracyStats:
         }
 
 
+def weighted_loss():
+    # Weights for +ve classes are based on an estimate of 7-9% of words being
+    # a +ve for each class.
+    return nn.BCEWithLogitsLoss(pos_weight=torch.Tensor((10.0, 10.0)))
+
+
 def train(
     epoch: int,
     dataloader: DataLoader,
@@ -109,7 +115,8 @@ def train(
     total_loss = 0.0
     total_line_start_acc = 0.0
     total_line_end_acc = 0.0
-    loss = nn.BCELoss()
+
+    loss = weighted_loss()
 
     stats = LayoutAccuracyStats()
 
@@ -122,6 +129,7 @@ def train(
         batch_loss = loss(pred, target)
         batch_loss.backward()
 
+        pred = torch.clamp(pred.sigmoid(), 0.0, 1.0)
         stats.update(pred, target)
 
         optimizer.step()
@@ -147,13 +155,13 @@ def test(
     test_iterable.set_description("Testing")
     total_loss = 0.0
     stats = LayoutAccuracyStats()
-    loss = nn.BCELoss()
+    loss = weighted_loss()
 
     with torch.no_grad():
         for batch in test_iterable:
             input, target = batch
 
-            pred = model(input)
+            pred = model(input).sigmoid()
 
             total_loss += loss(pred, target)
             stats.update(pred, target)
@@ -185,7 +193,7 @@ def main():
     n_words = 500
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    model = LayoutModel().to(device)
+    model = LayoutModel(return_probs=False).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=3e-4)
     train_dataset = WebLayout(
         args.data_dir, randomize=True, padded_size=n_words, train=True

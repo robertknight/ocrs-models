@@ -273,11 +273,17 @@ class LayoutModel(nn.Module):
     Inputs have shape `[N, W, D]` where N is the batch size, W is the word
     index, D is the word feature index.
 
-    Outputs have shape `[N, W, C]` where C is a vector of binary classifications
-    for each word `[line_start, line_end]`.
+    Outputs have shape `[N, W, C]` where C is a vector of either logits or
+    probabilities for different word attributes: `[line_start, line_end]`.
     """
 
-    def __init__(self):
+    def __init__(self, return_probs=False):
+        """
+
+        :param return_probs: If true, the model returns probabilities, otherwise
+            it returns logits which can be converted to probabilities using
+            sigmoid.
+        """
         super().__init__()
 
         n_features = 4
@@ -287,6 +293,8 @@ class LayoutModel(nn.Module):
         n_classes = 2
         n_layers = 6
         n_heads = 4
+
+        self.return_probs = return_probs
 
         self.embed = nn.Sequential(
             nn.Linear(n_features, d_embed_in),
@@ -300,9 +308,19 @@ class LayoutModel(nn.Module):
         )
         self.encode = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
 
-        self.classify = nn.Sequential(nn.Linear(d_embed, n_classes), nn.Sigmoid())
+        self.classify = nn.Linear(d_embed, n_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+
+        :param x: Tensor of (N, W, D) features for word bounding boxes
+        :return: Tensor of (N, W, C) logits or probabilities for different word
+            attributes.
+        """
         x = self.embed(x)
         x = self.encode(x)
-        return self.classify(x)
+        x = self.classify(x)
+        if self.return_probs:
+            return x.sigmoid()
+        else:
+            return x
