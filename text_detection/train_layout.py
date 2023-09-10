@@ -99,6 +99,7 @@ def weighted_loss():
 
 def train(
     epoch: int,
+    device: torch.device,
     dataloader: DataLoader,
     model: LayoutModel,
     optimizer: torch.optim.Optimizer,
@@ -116,13 +117,13 @@ def train(
     total_line_start_acc = 0.0
     total_line_end_acc = 0.0
 
-    loss = weighted_loss()
+    loss = weighted_loss().to(device)
 
     stats = LayoutAccuracyStats()
 
     for batch_idx, batch in enumerate(train_iterable):
         optimizer.zero_grad()
-        input, target = batch
+        input, target = [x.to(device) for x in batch]
 
         pred = model(input)
 
@@ -141,6 +142,7 @@ def train(
 
 
 def test(
+    device: torch.device,
     dataloader: DataLoader,
     model: LayoutModel,
 ) -> tuple[float, LayoutAccuracyStats]:
@@ -155,11 +157,11 @@ def test(
     test_iterable.set_description("Testing")
     total_loss = 0.0
     stats = LayoutAccuracyStats()
-    loss = weighted_loss()
+    loss = weighted_loss().to(device)
 
     with torch.no_grad():
         for batch in test_iterable:
-            input, target = batch
+            input, target = [x.to(device) for x in batch]
 
             pred = model(input).sigmoid()
 
@@ -233,7 +235,7 @@ def main():
         return
 
     if args.validate_only:
-        val_loss, val_stats = test(val_dataloader, model)
+        val_loss, val_stats = test(device, val_dataloader, model)
         print(f"Epoch {epoch} val stats: {val_stats.summary()}")
         return
 
@@ -253,8 +255,10 @@ def main():
     best_val_loss = float("inf")
 
     while args.max_epochs is None or epoch < args.max_epochs:
-        train_loss, train_stats = train(epoch, train_dataloader, model, optimizer)
-        val_loss, val_stats = test(val_dataloader, model)
+        train_loss, train_stats = train(
+            epoch, device, train_dataloader, model, optimizer
+        )
+        val_loss, val_stats = test(device, val_dataloader, model)
 
         print(f"Epoch {epoch} train loss {train_loss} val loss {val_loss}")
         print(f"Epoch {epoch} train stats: {train_stats.summary()}")
