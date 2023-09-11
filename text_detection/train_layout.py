@@ -173,6 +173,13 @@ def test(
     return (total_loss / len(dataloader)), stats
 
 
+def lr_scale_for_epoch(epoch: int) -> float:
+    """
+    Return scale factor applied to initial learning rate for a given epoch.
+    """
+    return 1
+
+
 def main():
     parser = ArgumentParser(description="Train text layout model.")
     parser.add_argument("data_dir")
@@ -197,6 +204,7 @@ def main():
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = LayoutModel(return_probs=False).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=3e-4)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_scale_for_epoch)
     train_dataset = WebLayout(
         args.data_dir, randomize=True, padded_size=n_words, train=True
     )
@@ -259,14 +267,17 @@ def main():
             epoch, device, train_dataloader, model, optimizer
         )
         val_loss, val_stats = test(device, val_dataloader, model)
+        lr = optimizer.state_dict()["param_groups"][0]["lr"]
 
         print(f"Epoch {epoch} train loss {train_loss} val loss {val_loss}")
         print(f"Epoch {epoch} train stats: {train_stats.summary()}")
         print(f"Epoch {epoch} val stats: {val_stats.summary()}")
+        print(f"Epoch {epoch} lr {lr}")
 
         if enable_wandb:
             wandb.log(
                 {
+                    "lr": lr,
                     "train_loss": train_loss,
                     "train_accuracy": train_stats.stats_dict(),
                     "val_loss": val_loss,
@@ -278,6 +289,7 @@ def main():
             best_val_loss = val_loss
             save_checkpoint("text-layout-checkpoint.pt", model, optimizer, epoch=epoch)
 
+        scheduler.step()
         epoch += 1
 
 
