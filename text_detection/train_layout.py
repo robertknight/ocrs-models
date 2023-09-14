@@ -8,8 +8,8 @@ from tqdm import tqdm
 import wandb
 
 from .datasets import WebLayout
-from .model import LayoutModel
-from .train import load_checkpoint, save_checkpoint, trainable_params
+from .models import LayoutModel
+from .train_detection import load_checkpoint, save_checkpoint, trainable_params
 
 
 def f1_score(precision: float, recall: float) -> float:

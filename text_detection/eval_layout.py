@@ -4,7 +4,7 @@ import json
 import torch
 
 from .datasets import draw_word_boxes
-from .model import LayoutModel
+from .models import LayoutModel
 
 
 def word_box_tensor(

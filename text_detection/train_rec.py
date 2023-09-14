@@ -18,8 +18,8 @@ from .datasets import (
     decode_text,
     text_recognition_data_augmentations,
 )
-from .model import RecognitionModel
-from .train import load_checkpoint, save_checkpoint
+from .models import RecognitionModel
+from .train_detection import load_checkpoint, save_checkpoint
 
 
 class RecognitionAccuracyStats:

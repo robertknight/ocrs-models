@@ -7,10 +7,10 @@ from torchvision.io import ImageReadMode, read_image
 import torch
 from torchvision.transforms.functional import InterpolationMode, resize, to_pil_image
 
-from .model import DetectionModel
+from .models import DetectionModel
 from .datasets import SHRINK_DISTANCE
 from .postprocess import draw_quads, expand_quads, extract_cc_quads
-from .train import mask_size
+from .train_detection import mask_size
 
 
 def binarize_mask(mask: torch.Tensor, threshold: float) -> torch.Tensor:

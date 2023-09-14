@@ -14,7 +14,7 @@ import torchvision.transforms as transforms
 from tqdm import tqdm
 
 from .datasets import DDI100, HierText
-from .model import DetectionModel
+from .models import DetectionModel
 from .postprocess import box_match_metrics, extract_cc_quads
 
 mask_height = 800
