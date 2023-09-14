@@ -1,4 +1,5 @@
 from argparse import ArgumentParser, BooleanOptionalAction
+from collections.abc import Sized
 import gzip
 import json
 import os
@@ -134,7 +135,11 @@ class DDI100Unpickler(pickle.Unpickler):
             raise pickle.UnpicklingError(f"Disallowed class {module}.{name}")
 
 
-class DDI100(Dataset):
+class SizedDataset(Dataset, Sized):
+    pass
+
+
+class DDI100(SizedDataset):
     """
     Distorted Document Images (DDI-100) dataset.
 
@@ -223,7 +228,7 @@ class DDI100(Dataset):
         return generate_mask(width, height, reordered_quads)
 
 
-class HierText(Dataset):
+class HierText(SizedDataset):
     """
     HierText dataset.
 
@@ -430,7 +435,7 @@ def bounding_box_size(vertices: list[tuple[int, int]]) -> tuple[int, int]:
     return (max_x - min_x, max_y - min_y)
 
 
-class HierTextRecognition(Dataset):
+class HierTextRecognition(SizedDataset):
     """
     HierText dataset for text recognition.
 
@@ -724,7 +729,7 @@ def intervals_overlap(a: float, b: float, c: float, d: float) -> bool:
         return d > a
 
 
-class WebLayout(Dataset):
+class WebLayout(SizedDataset):
     """
     Layout analysis dataset produced from rendering web pages.
     """
@@ -794,7 +799,7 @@ class WebLayout(Dataset):
         """
 
         words = []
-        labels = []
+        labels_list = []
         in_path = os.path.join(self.root_dir, self._files[idx])
 
         if self.randomize:
@@ -876,10 +881,10 @@ class WebLayout(Dataset):
                         ):
                             line_end = True
 
-                    labels.append([int(line_start), int(line_end)])
+                    labels_list.append([int(line_start), int(line_end)])
 
         input_ = torch.Tensor(words)
-        labels = torch.Tensor(labels)
+        labels = torch.Tensor(labels_list)
 
         if self.padded_size:
             pad_len = self.padded_size - input_.shape[0]
@@ -958,6 +963,7 @@ def draw_word_boxes(
 
     img = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(img)
+    color: str | tuple[int, int, int]
 
     def scale_x(coord: float) -> float:
         return (coord + 0.5) * width
@@ -1045,10 +1051,11 @@ running this command.
             return True
         return args.filter in path
 
+    dataset: SizedDataset
     match args.dataset_type:
         case "ddi" | "hiertext":
             # Explicitly cast dataset constructors to a common type to avoid mypy error.
-            DatasetConstructor = Callable[..., DDI100 | HierText | HierTextRecognition]
+            DatasetConstructor = Callable[..., SizedDataset]
             if args.dataset_type == "ddi":
                 load_dataset = cast(DatasetConstructor, DDI100)
             else:
