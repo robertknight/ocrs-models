@@ -177,7 +177,12 @@ def lr_scale_for_epoch(epoch: int) -> float:
     """
     Return scale factor applied to initial learning rate for a given epoch.
     """
-    return 1
+    warmup_epochs = 50
+
+    if warmup_epochs > 0:
+        return min((epoch + 1) / (warmup_epochs + 1), 1)
+    else:
+        return 1
 
 
 def main():
@@ -201,21 +206,42 @@ def main():
     # dimension of inputs and targets are padded to this length.
     n_words = 500
 
+    # Whether to normalize bounding box coordinates in the dataset loader.
+    normalize_coords = False
+
+    # Whether to apply small augmentations (eg. small random translations)
+    # to bounding box coordinates.
+    use_data_augmentation = False
+
+    # Bounding box coordinate encoding to use
+    pos_embedding = "sin"
+
+    batch_size = 64
+
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    model = LayoutModel(return_probs=False).to(device)
+    model = LayoutModel(return_probs=False, pos_embedding=pos_embedding).to(device)
+
     optimizer = torch.optim.Adam(model.parameters(), lr=3e-4)
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_scale_for_epoch)
     train_dataset = WebLayout(
-        args.data_dir, randomize=True, padded_size=n_words, train=True
+        args.data_dir,
+        normalize_coords=normalize_coords,
+        randomize=use_data_augmentation,
+        padded_size=n_words,
+        train=True,
     )
     train_dataloader = DataLoader(
-        train_dataset, batch_size=10, shuffle=True, pin_memory=True
+        train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True
     )
 
     val_dataset = WebLayout(
-        args.data_dir, randomize=False, padded_size=n_words, train=False
+        args.data_dir,
+        normalize_coords=normalize_coords,
+        randomize=False,
+        padded_size=n_words,
+        train=False,
     )
-    val_dataloader = DataLoader(val_dataset, batch_size=10, shuffle=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
 
     total_params = trainable_params(model)
     print(f"Model param count {total_params}")

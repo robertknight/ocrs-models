@@ -51,7 +51,7 @@ def main():
     args = parser.parse_args()
 
     model = LayoutModel(return_probs=True)
-    checkpoint = torch.load(args.checkpoint)
+    checkpoint = torch.load(args.checkpoint, map_location=torch.device("cpu"))
     model.load_state_dict(checkpoint["model_state"])
 
     with open(args.word_box_file) as f:

@@ -1,3 +1,5 @@
+from typing import Literal
+
 import torch
 from torch import nn
 
@@ -266,6 +268,74 @@ class RecognitionModel(nn.Module):
         return self.output(x)
 
 
+def positional_encoding(length: torch.Tensor, depth: int) -> torch.Tensor:
+    """
+    Generate a tensor of sinusoidal position encodings.
+
+    The returned tensor has shape `(length, depth)`. If `depth` is odd, it will
+    be rounded down to the nearest even number.
+
+    This is a slightly modified version of the positional encodings in the
+    original transformer paper, based on
+    https://www.tensorflow.org/text/tutorials/transformer and
+    https://jalammar.github.io/illustrated-transformer/.
+
+    :param length: Number of positions to generate encodings for
+    :param depth: The size of the encoding vector for each position
+    """
+    depth = depth // 2
+
+    positions = torch.arange(length).unsqueeze(-1)  # (length, 1)
+    depths = torch.arange(depth).unsqueeze(0) / depth  # (1, depth)
+
+    angle_rates = 1 / (10_000**depths)
+    angle_rads = positions * angle_rates  # (length, depth)
+
+    return torch.cat([torch.sin(angle_rads), torch.cos(angle_rads)], dim=-1)
+
+
+def encode_bbox_positions(boxes: torch.Tensor, size: int) -> torch.Tensor:
+    """
+    Convert bounding box positions to positional encodings.
+
+    :param boxes: (N, W, D) tensor of bounding box coordinates, where D = 4.
+    :param size: Size of encoding for each coordinate
+    :return: (N, W, D * size) tensor of encodings
+    """
+    N, W, D = boxes.shape
+    # assert D == 4  # Should be [left, top, right, bottom]
+
+    int_boxes = boxes.round().int()
+    max_coord = int_boxes.max()
+
+    encodings = positional_encoding(max_coord + 1, size).to(
+        boxes.device
+    )  # (max_coord, size)
+    encoded = encodings[int_boxes]  # (N, W, D, size)
+    encoded = encoded.reshape((N, W, D * size))
+
+    return encoded
+
+
+class SinPositionalEncoding(nn.Module):
+    """
+    Converting coordinates of bounding boxes to sinusoidal position encodings.
+
+    See `encode_bbox_positions`.
+    """
+
+    def __init__(self, d_model: int):
+        super().__init__()
+        self.d_model = d_model
+
+    def forward(self, boxes):
+        """
+        :param boxes: (N, W, D) tensor of bounding box coordinates
+        """
+        N, W, D = boxes.shape
+        return encode_bbox_positions(boxes, self.d_model // D)
+
+
 class LayoutModel(nn.Module):
     """
     Text layout analysis model.
@@ -277,7 +347,9 @@ class LayoutModel(nn.Module):
     probabilities for different word attributes: `[line_start, line_end]`.
     """
 
-    def __init__(self, return_probs=False):
+    def __init__(
+        self, return_probs=False, pos_embedding: Literal["mlp", "sin"] = "sin"
+    ):
         """
 
         :param return_probs: If true, the model returns probabilities, otherwise
@@ -287,28 +359,33 @@ class LayoutModel(nn.Module):
         super().__init__()
 
         n_features = 4
-        d_embed_in = 64
-        d_embed = 64
-        d_feedforward = 64
+        d_model = 256
+        d_feedforward = d_model * 4
+        d_embed_hidden = 32
         n_classes = 2
         n_layers = 6
-        n_heads = 4
+        n_heads = max(d_model // 64, 1)
 
+        self.d_embed = d_model
         self.return_probs = return_probs
 
-        self.embed = nn.Sequential(
-            nn.Linear(n_features, d_embed_in),
-            nn.ReLU(),
-            nn.Linear(d_embed_in, d_embed),
-            nn.ReLU(),
-        )
+        match pos_embedding:
+            case "mlp":
+                self.embed = nn.Sequential(
+                    nn.Linear(n_features, 64),
+                    nn.ReLU(),
+                    nn.Linear(64, d_model),
+                    nn.ReLU(),
+                )
+            case "sin":
+                self.embed = SinPositionalEncoding(d_model)
 
         encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_embed, nhead=n_heads, dim_feedforward=d_feedforward
+            d_model=d_model, nhead=n_heads, dim_feedforward=d_feedforward
         )
         self.encode = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
 
-        self.classify = nn.Linear(d_embed, n_classes)
+        self.classify = nn.Linear(d_model, n_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -320,6 +397,7 @@ class LayoutModel(nn.Module):
         x = self.embed(x)
         x = self.encode(x)
         x = self.classify(x)
+
         if self.return_probs:
             return x.sigmoid()
         else:

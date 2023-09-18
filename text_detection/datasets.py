@@ -742,12 +742,14 @@ class WebLayout(SizedDataset):
         train=True,
         max_images: Optional[int] = None,
         filter: Optional[Callable[[str], bool]] = None,
+        normalize_coords=True,
     ):
         """
         Construct dataset from JSON files in `root_dir`.
 
         :param root_dir: Directory to load dataset from
         :param filter: Filter images by file path
+        :param normalize_coords: Normalize coordinates to be in the range (-0.5, 0.5)
         :param max_images: Maximum number of images to load from dataset
         :param randomize:
             If true, coordinates of OCR boxes will be transformed randomly
@@ -761,6 +763,7 @@ class WebLayout(SizedDataset):
         """
         super().__init__()
 
+        self.normalize_coords = normalize_coords
         self.randomize = randomize
         self.root_dir = root_dir
         self.padded_size = padded_size
@@ -805,10 +808,9 @@ class WebLayout(SizedDataset):
         if self.randomize:
             a, b, c = torch.rand(3).tolist()
             max_offset = 25
-            max_scale = 0.1
-            jitter_x = -max_offset + a * (max_offset * 2)
-            jitter_y = -max_offset + b * (max_offset * 2)
-            scale = (1.0 - max_scale) + c * (max_scale * 2)
+            jitter_x = a * max_offset
+            jitter_y = b * max_offset
+            scale = 1.0
         else:
             jitter_x = 0.0
             jitter_y = 0.0
@@ -834,12 +836,15 @@ class WebLayout(SizedDataset):
                 top = top * scale + jitter_y
                 bottom = bottom * scale + jitter_y
 
-                # Normalize coordinates such that the center of the image is
-                # at (0, 0).
-                left = norm_x_coord(left)
-                top = norm_y_coord(top)
-                right = norm_x_coord(right)
-                bottom = norm_y_coord(bottom)
+                assert left >= 0 and right >= 0 and top >= 0 and bottom >= 0
+
+                if self.normalize_coords:
+                    # Normalize coordinates such that the center of the image is
+                    # at (0, 0).
+                    left = norm_x_coord(left)
+                    top = norm_y_coord(top)
+                    right = norm_x_coord(right)
+                    bottom = norm_y_coord(bottom)
 
                 return [left, top, right, bottom]
 
@@ -1119,6 +1124,7 @@ running this command.
                 train=args.subset == "train",
                 max_images=args.max_images,
                 filter=filter_item,
+                randomize=args.augment,
             )
 
             for i in range(len(dataset)):
