@@ -2,3 +2,4 @@
 *.pt
 
 datasets/
+wandb/
