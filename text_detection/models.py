@@ -286,11 +286,9 @@ def positional_encoding(length: torch.Tensor, depth: int) -> torch.Tensor:
     depth = depth // 2
 
     positions = torch.arange(length).unsqueeze(-1)  # (length, 1)
-    depths = torch.arange(depth).unsqueeze(0)
+    depths = torch.arange(depth).unsqueeze(0) / depth  # (1, depth)
 
-    scale = 0.1
-    angle_rates = scale * 1 / (2 ** depths)
-
+    angle_rates = 1 / (10_000**depths)
     angle_rads = positions * angle_rates  # (length, depth)
 
     return torch.cat([torch.sin(angle_rads), torch.cos(angle_rads)], dim=-1)
