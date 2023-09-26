@@ -8,22 +8,31 @@ from .models import LayoutModel
 
 
 def word_box_tensor(
-    word_boxes: list[list[float]], img_width: int, img_height: int
+    word_boxes: list[list[float]],
+    img_width: int,
+    img_height: int,
+    normalize_coords=False,
 ) -> torch.Tensor:
     """
     Convert a list of word box coordinates into input for the layout model.
 
     :param word_boxes: A list of word coordinates. Each item is a list of
         [left, top, right, bottom] coordinates for a single word.
+    :param normalize_coords: Whether to normalize coordinates such that (0, 0)
+        is the center of the image and coordinates are in the range [-0.5, 0.5].
     :return: A `(len(word_boxes), D)` item for the layout model.
     """
     n_features = 4
     x = torch.zeros((len(word_boxes), n_features))
 
     def norm_x(coord: float):
+        if not normalize_coords:
+            return coord
         return (coord / img_width) - 0.5
 
     def norm_y(coord: float):
+        if not normalize_coords:
+            return coord
         return (coord / img_height) - 0.5
 
     for i, word_coords in enumerate(word_boxes):
@@ -54,6 +63,10 @@ def main():
     checkpoint = torch.load(args.checkpoint, map_location=torch.device("cpu"))
     model.load_state_dict(checkpoint["model_state"])
 
+    # True if model requires coordinates to be normalized into the range [-0.5,
+    # 0.5], with (0, 0) being the center of the image.
+    normalize_coords = False
+
     with open(args.word_box_file) as f:
         wb_json = json.load(f)
 
@@ -62,9 +75,12 @@ def main():
         word_list = []
         for para in wb_json["paragraphs"]:
             for word in para["words"]:
-                word_list.append(word["coords"])
+                coords = [float(c) for c in word["coords"]]
+                word_list.append(coords)
 
-        word_boxes = word_box_tensor(word_list, img_width, img_height)
+        word_boxes = word_box_tensor(
+            word_list, img_width, img_height, normalize_coords=normalize_coords
+        )
         word_boxes = word_boxes.unsqueeze(0)  # Add batch dim
         label_probs = model(word_boxes)
 
@@ -87,7 +103,15 @@ def main():
                 probs = label_probs[0, :, 1]
 
         label_img = args.output_file
-        draw_word_boxes(label_img, img_width, img_height, word_boxes[0], labels, probs)
+        draw_word_boxes(
+            label_img,
+            img_width,
+            img_height,
+            word_boxes[0],
+            labels,
+            probs,
+            normalized_coords=normalize_coords,
+        )
 
 
 if __name__ == "__main__":

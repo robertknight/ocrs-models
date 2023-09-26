@@ -944,15 +944,18 @@ def draw_word_boxes(
     labels: Optional[torch.Tensor] = None,
     probs: Optional[torch.Tensor] = None,
     threshold=0.5,
+    normalized_coords=False,
 ):
     """
     Draw word bounding boxes on an image and color them according to labels
     or probabilities.
 
     :param word_boxes: A (W, D) tensor of word bounding boxes, where D is a
-        [left, top, right, bottom] feature vector. Coordinates are assumed to
-        be scaled and offset such that (0, 0) is the center of the image and
-        the edges have coordinates of 1.
+        [left, top, right, bottom] feature vector.
+
+        If `normalized_coords` is True, coordinates are assumed to be scaled and
+        offset such that (0, 0) is the center of the image and coordinates are
+        in the range [-0.5, 0.5].
     :param labels: A (W, L) tensor of labels, where L is a (line_start, line_end)
         category vector.
     :param probs: A (W,) tensor of probabilities for each word.
@@ -975,9 +978,13 @@ def draw_word_boxes(
     color: str | tuple[int, int, int]
 
     def scale_x(coord: float) -> float:
+        if not normalized_coords:
+            return coord
         return (coord + 0.5) * width
 
     def scale_y(coord: float) -> float:
+        if not normalized_coords:
+            return coord
         return (coord + 0.5) * height
 
     for i in range(n_words):
