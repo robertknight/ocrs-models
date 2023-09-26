@@ -211,7 +211,8 @@ def main():
 
     # Whether to apply small augmentations (eg. small random translations)
     # to bounding box coordinates.
-    use_data_augmentation = False
+    use_data_augmentation = True
+    max_jitter = 10  # Max random translation
 
     # Bounding box coordinate encoding to use
     pos_embedding = "sin"
@@ -225,6 +226,7 @@ def main():
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_scale_for_epoch)
     train_dataset = WebLayout(
         args.data_dir,
+        max_jitter=max_jitter,
         normalize_coords=normalize_coords,
         randomize=use_data_augmentation,
         padded_size=n_words,

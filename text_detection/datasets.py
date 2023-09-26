@@ -743,6 +743,7 @@ class WebLayout(SizedDataset):
         max_images: Optional[int] = None,
         filter: Optional[Callable[[str], bool]] = None,
         normalize_coords=True,
+        max_jitter: int = 25,
     ):
         """
         Construct dataset from JSON files in `root_dir`.
@@ -751,6 +752,9 @@ class WebLayout(SizedDataset):
         :param filter: Filter images by file path
         :param normalize_coords: Normalize coordinates to be in the range (-0.5, 0.5)
         :param max_images: Maximum number of images to load from dataset
+        :param max_jitter:
+            Maximum amount of random translation to apply, only used if `randomize`
+            is true.
         :param randomize:
             If true, coordinates of OCR boxes will be transformed randomly
             before being returned by `__getitem__`.
@@ -763,6 +767,7 @@ class WebLayout(SizedDataset):
         """
         super().__init__()
 
+        self.max_jitter = max_jitter
         self.normalize_coords = normalize_coords
         self.randomize = randomize
         self.root_dir = root_dir
@@ -807,9 +812,8 @@ class WebLayout(SizedDataset):
 
         if self.randomize:
             a, b, c = torch.rand(3).tolist()
-            max_offset = 25
-            jitter_x = a * max_offset
-            jitter_y = b * max_offset
+            jitter_x = a * self.max_jitter
+            jitter_y = b * self.max_jitter
             scale = 1.0
         else:
             jitter_x = 0.0
