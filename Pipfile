@@ -13,6 +13,7 @@ opencv-python = "*"
 shapely = "*"
 wandb = "*"
 pylev = "*"
+torch-geometric = "*"
 
 [dev-packages]
 black = "*"
