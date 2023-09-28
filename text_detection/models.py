@@ -2,6 +2,7 @@ from typing import Literal
 
 import torch
 from torch import nn
+from torch_geometric.nn.models import GAT
 
 
 class DepthwiseConv(nn.Module):
@@ -402,3 +403,128 @@ class LayoutModel(nn.Module):
             return x.sigmoid()
         else:
             return x
+
+
+def rotated_rect_corners(rects: torch.Tensor) -> torch.Tensor:
+    """
+    Convert rotated rect attributes to corner positions.
+
+    :param rects:
+        (B, D) tensor of rotated rect attributes, where B is the box index and
+        D is a sequence of [center_x, center_y, width, height, angle].
+    :return:
+        (B, 8) tensor of corner positions of each rotated rect, arranged as
+        [x0, y0, x1, y1, ...]
+    """
+    cx = rects[:, 0]
+    cy = rects[:, 1]
+    w = rects[:, 2]
+    h = rects[:, 3]
+    angle = rects[:, 4]
+
+    half_w = w / 2
+    half_h = h / 2
+
+    up_y = angle.cos()
+    up_x = angle.sin()
+
+    perp_up_y = -up_x
+    perp_up_x = up_y
+
+    perp_offset_y = up_y * half_h
+    perp_offset_x = up_x * half_h
+
+    par_offset_y = perp_up_y * half_w
+    par_offset_x = perp_up_x * half_w
+
+    return torch.cat(
+        [
+            # Corner 0
+            cx - perp_offset_x - par_offset_x,
+            cy - perp_offset_y - par_offset_y,
+            # Corner 1
+            cx - perp_offset_x + par_offset_x,
+            cy - perp_offset_y + par_offset_y,
+            # Corner 2
+            cx + perp_offset_x + par_offset_x,
+            cy + perp_offset_y + par_offset_y,
+            # Corner 3
+            cx + perp_offset_x - par_offset_x,
+            cy + perp_offset_y - par_offset_y,
+        ],
+        dim=-1,
+    )
+
+
+class GCNLayoutModel:
+    """
+    Text layout analysis model based on graph convolutions.
+
+    Inputs have shape `[N, W, D]` where N is the batch size, W is the word
+    index, D is the word feature index.
+
+    Outputs have shape `[N, W, C]` where C is a vector of either logits or
+    probabilities for different word attributes: `[line_start, line_end]`.
+
+    This model is based on the paper [Post-OCR Paragraph Recognition by
+    Graph Convolutional Networks](https://arxiv.org/abs/2101.12741).
+    """
+
+    def __init__(self):
+        super().__init__()
+
+        self.gat = GAT(
+            # 5 features per box, 6 features per corner
+            in_channels=5 + 4 * 6,
+            hidden_channels=64,
+            heads=4,
+            num_layers=8,
+            v2=True,
+            # Two binary classifications per box: line_start, line_end
+            out_channels=2,
+        )
+
+    def forward(
+        self, boxes: torch.Tensor, edges: torch.Tensor, edge_lengths: torch.Tensor
+    ) -> torch.Tensor:
+        """
+
+        :param boxes:
+            (N, W, D) tensor where N is the batch size, W is the word index,
+            D is `[center_x, center_y, width, height, angle]`.
+        :param edges:
+            (N, 2, E) tensor of edge indices between boxes.
+        :param edge_lengths:
+            (N, E) tensor of edge lengths between boxes.
+        """
+
+        # Output
+        # box = [w, h, a, cos(a), sin(a), ...corners]
+        # corner = [x, y, x * cos(a), x * sin(a), y * cos(a), y * sin(a)]
+
+        N, W, D = boxes.shape
+
+        w = boxes[:, :, 2]
+        h = boxes[:, :, 3]
+        angle = boxes[:, :, 4]
+        corners = rotated_rect_corners(boxes.reshape((N * W, D)))
+        corners = corners.reshape((N, W, 8))
+
+        corner_features: list[torch.Tensor] = []
+        for c in range(4):
+            x = corners[:, :, c * 2]
+            y = corners[:, :, c * 2 + 1]
+            corner_features += [
+                x,
+                y,
+                x * angle.cos(),
+                y * angle.sin(),
+                x * angle.cos(),
+                y * angle.sin(),
+            ]
+
+        nodes = torch.cat([w, h, angle.cos(), angle.sin(), *corner_features], dim=-1)
+
+        # TODO - Create edge attributes and pass to GAT
+
+        return self.gat(nodes, edges)
