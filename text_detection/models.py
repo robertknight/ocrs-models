@@ -460,10 +460,10 @@ class GCNLayoutModel:
     """
     Text layout analysis model based on graph convolutions.
 
-    Inputs have shape `[N, W, D]` where N is the batch size, W is the word
+    Inputs have shape (N, W, D) where N is the batch size, W is the word
     index, D is the word feature index.
 
-    Outputs have shape `[N, W, C]` where C is a vector of either logits or
+    Outputs have shape (N, W, C) where C is a vector of either logits or
     probabilities for different word attributes: `[line_start, line_end]`.
 
     This model is based on the paper [Post-OCR Paragraph Recognition by
@@ -488,7 +488,6 @@ class GCNLayoutModel:
         self, boxes: torch.Tensor, edges: torch.Tensor, edge_lengths: torch.Tensor
     ) -> torch.Tensor:
         """
-
         :param boxes:
             (N, W, D) tensor where N is the batch size, W is the word index,
             D is `[center_x, center_y, width, height, angle]`.
@@ -498,10 +497,6 @@ class GCNLayoutModel:
             (N, E) tensor of edge lengths between boxes.
         """
 
-        # Output
-        # box = [w, h, a, cos(a), sin(a), ...corners]
-        # corner = [x, y, x * cos(a), x * sin(a), y * cos(a), y * sin(a)]
-
         N, W, D = boxes.shape
 
         w = boxes[:, :, 2]
@@ -510,6 +505,8 @@ class GCNLayoutModel:
         corners = rotated_rect_corners(boxes.reshape((N * W, D)))
         corners = corners.reshape((N, W, 8))
 
+        # See Appendix B of https://arxiv.org/pdf/2101.12741.pdf for GAT input
+        # features.
         corner_features: list[torch.Tensor] = []
         for c in range(4):
             x = corners[:, :, c * 2]
