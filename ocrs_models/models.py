@@ -285,7 +285,8 @@ def positional_encoding(length: torch.Tensor, depth: int) -> torch.Tensor:
     """
     depth = depth // 2
 
-    positions = torch.arange(length).unsqueeze(-1)  # (length, 1)
+    # (length, 1)
+    positions = torch.arange(length).unsqueeze(-1)  # type: ignore
     depths = torch.arange(depth).unsqueeze(0) / depth  # (1, depth)
 
     angle_rates = 1 / (10_000**depths)
@@ -346,6 +347,8 @@ class LayoutModel(nn.Module):
     Outputs have shape `[N, W, C]` where C is a vector of either logits or
     probabilities for different word attributes: `[line_start, line_end]`.
     """
+
+    embed: nn.Module
 
     def __init__(
         self, return_probs=False, pos_embedding: Literal["mlp", "sin"] = "sin"
