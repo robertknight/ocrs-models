@@ -255,7 +255,7 @@ def prepare_transform(mask_size: tuple[int, int], augment) -> nn.Module:
     :param mask_size: HxW output image size
     :param augment: Whether to apply randomized data augmentation
     """
-    resize_transform = transforms.Resize(mask_size)
+    resize_transform = transforms.Resize(mask_size, antialias=False)
     if not augment:
         return resize_transform
 
