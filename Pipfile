@@ -13,6 +13,7 @@ opencv-python = "*"
 shapely = "*"
 wandb = "*"
 pylev = "*"
+onnx = "*"
 
 [dev-packages]
 black = "*"
