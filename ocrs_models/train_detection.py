@@ -85,6 +85,7 @@ def train(
 
         img = img.to(device)
         masks = masks.to(device)
+
         start = time.time()
 
         pred_masks = model(img)
@@ -233,6 +234,15 @@ def balanced_cross_entropy_loss(
 
     pos_mask = target > 0.5
     neg_mask = target < 0.5
+
+    # Clamp target values to ensure they are valid for use with BCE loss.
+    #
+    # The PyTorch transforms used for data augmentation can sometimes result in
+    # values slightly outside the [0, 1] range.
+    #
+    # We assume the predictions have been generated via a sigmoid or similar
+    # that guarantees values in [0, 1].
+    target = target.clamp(0.0, 1.0)
 
     pixel_loss = F.binary_cross_entropy(pred, target, reduction="none")
 
