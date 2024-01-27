@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 from torchvision.transforms.functional import resize, to_pil_image
 import torchvision.transforms as transforms
 from tqdm import tqdm
+import wandb
 
 from .datasets import DDI100, HierText
 from .models import DetectionModel
@@ -288,6 +289,10 @@ def main():
         action="store_true",
         help="Save debugging images during training",
     )
+    parser.add_argument("--export", type=str, help="Export model to ONNX format")
+    parser.add_argument(
+        "--max-epochs", type=int, help="Maximum number of epochs to train for"
+    )
     parser.add_argument(
         "--max-images", type=int, help="Maximum number of images to load"
     )
@@ -314,6 +319,10 @@ def main():
     batch_size = args.batch_size
     max_images = args.max_images
 
+    # Set to aid debugging of initial text detection model
+    pytorch_seed = 1234
+    torch.manual_seed(pytorch_seed)
+
     if max_images:
         validation_max_images = max(10, int(max_images * 0.1))
     else:
@@ -336,8 +345,12 @@ def main():
     )
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size)
 
-    print(f"Train images {len(train_dataset)} in {len(train_dataloader)} batches")
-    print(f"Validation images {len(val_dataset)} in {len(val_dataloader)} batches")
+    print(
+        f"Training dataset: images {len(train_dataset)} in {len(train_dataloader)} batches"
+    )
+    print(
+        f"Validation dataset: images {len(val_dataset)} in {len(val_dataloader)} batches"
+    )
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = DetectionModel().to(device)
@@ -345,7 +358,7 @@ def main():
     optimizer = torch.optim.Adam(model.parameters())
 
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Model param count {total_params}")
+    print(f"Model param count: {total_params}")
 
     epochs_without_improvement = 0
     min_train_loss = 1.0
@@ -355,6 +368,23 @@ def main():
     if args.checkpoint:
         checkpoint = load_checkpoint(args.checkpoint, model, optimizer, device)
         epoch = checkpoint["epoch"]
+
+    if args.export:
+        if not args.checkpoint:
+            raise Exception("ONNX export requires a checkpoint to load")
+
+        test_batch = next(iter(val_dataloader))
+        test_image = test_batch["image"][0:1]
+
+        torch.onnx.export(
+            model,
+            test_image,
+            args.export,
+            input_names=["image"],
+            output_names=["mask"],
+            dynamic_axes={"image": {0: "batch"}, "mask": {0: "batch"}},
+        )
+        return
 
     if args.validate_only:
         if not args.checkpoint:
@@ -374,7 +404,21 @@ def main():
         print("Validation metrics:", format_metrics(val_metrics))
         return
 
-    while True:
+    # Enable experiment tracking via Weights and Biases if API key set.
+    enable_wandb = bool(os.environ.get("WANDB_API_KEY"))
+    if enable_wandb:
+        wandb.init(
+            project="text-detection",
+            config={
+                "batch_size": args.batch_size,
+                "dataset_size": len(train_dataset),
+                "model_params": total_params,
+                "pytorch_seed": pytorch_seed,
+            },
+        )
+        wandb.watch(model)
+
+    while args.max_epochs is None or epoch < args.max_epochs:
         train_loss = train(
             epoch,
             device,
@@ -396,10 +440,21 @@ def main():
         )
         print(f"Epoch {epoch} validation metrics:", format_metrics(val_metrics))
 
+        if enable_wandb:
+            wandb.log(
+                {
+                    "train_loss": train_loss,
+                    "val_loss": val_loss,
+                    "val_metrics": val_metrics,
+                }
+            )
+
         if train_loss < min_train_loss:
             min_loss = train_loss
             epochs_without_improvement = 0
-            save_checkpoint("checkpoint.pt", model, optimizer, epoch=epoch)
+            save_checkpoint(
+                "text-detection-checkpoint.pt", model, optimizer, epoch=epoch
+            )
         else:
             epochs_without_improvement += 1
 
