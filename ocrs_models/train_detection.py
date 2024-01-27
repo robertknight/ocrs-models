@@ -174,9 +174,12 @@ def test(
 
             test_loss += loss_fn(pred_masks, masks).item()
 
-            for item_index, pred_mask in enumerate(pred_masks):
-                pred_quads = extract_cc_quads(binarize_mask(pred_mask).cpu())
-                target_quads = extract_cc_quads(binarize_mask(masks[item_index]).cpu())
+            bin_pred_masks = binarize_mask(pred_masks).cpu()
+            bin_masks = binarize_mask(masks).cpu()
+
+            for item_index, bin_pred_mask in enumerate(bin_pred_masks):
+                pred_quads = extract_cc_quads(bin_pred_mask)
+                target_quads = extract_cc_quads(bin_masks[item_index])
                 metrics.append(box_match_metrics(pred_quads, target_quads))
 
             if save_debug_images:
@@ -344,7 +347,11 @@ def main():
         args.data_dir, transform=transform, train=True, max_images=max_images
     )
     train_dataloader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, num_workers=2
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        pin_memory=True,
+        num_workers=2,
     )
 
     val_dataset = load_dataset(
@@ -353,7 +360,9 @@ def main():
         train=False,
         max_images=validation_max_images,
     )
-    val_dataloader = DataLoader(val_dataset, batch_size=batch_size)
+    val_dataloader = DataLoader(
+        val_dataset, batch_size=batch_size, pin_memory=True, num_workers=2
+    )
 
     print(
         f"Training dataset: images {len(train_dataset)} in {len(train_dataloader)} batches"
