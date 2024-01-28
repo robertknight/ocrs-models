@@ -4,9 +4,7 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-torch = "*"
 numpy = "*"
-torchvision = "*"
 pillow = "*"
 tqdm = "*"
 opencv-python = "*"

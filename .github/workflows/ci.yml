@@ -22,6 +22,8 @@ jobs:
       - name: Install pipenv
         run: pip install pipenv
       - name: Install dependencies
-        run: pipenv install --dev
+        run: |
+          pipenv install --dev
+          pipenv run pip install torch torchvision
       - name: Check formatting and types
         run: pipenv run qa
