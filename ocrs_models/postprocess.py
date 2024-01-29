@@ -79,6 +79,29 @@ def expand_quads(quads: torch.Tensor, dist: float) -> torch.Tensor:
     return torch.stack([expand_quad(quad, dist) for quad in quads])
 
 
+def lines_intersect(a_start: float, a_end: float, b_start: float, b_end: float) -> bool:
+    """
+    Return true if the lines (a_start, a_end) and (b_start, b_end) intersect.
+    """
+    if a_start <= b_start:
+        return a_end > b_start
+    else:
+        return b_end > a_start
+
+
+def bounds_intersect(
+    a: tuple[float, float, float, float], b: tuple[float, float, float, float]
+) -> bool:
+    """
+    Return true if the rects defined by two (min_x, min_y, max_x, max_y) tuples intersect.
+    """
+    a_min_x, a_min_y, a_max_x, a_max_y = a
+    b_min_x, b_min_y, b_max_x, b_max_y = b
+    return lines_intersect(a_min_x, a_max_x, b_min_x, b_max_x) and lines_intersect(
+        a_min_y, a_max_y, b_min_y, b_max_y
+    )
+
+
 def box_match_metrics(pred: torch.Tensor, target: torch.Tensor) -> dict[str, float]:
     """
     Compute metrics for quality of matches between two sets of rotated rects.
@@ -99,12 +122,22 @@ def box_match_metrics(pred: torch.Tensor, target: torch.Tensor) -> dict[str, flo
     # Areas of unions of predictions and targets
     union = torch.zeros((len(pred), len(target)))
 
+    # Get bounding boxes of polys for a cheap intersection test.
+    pred_polys_bounds = [poly.bounds for poly in pred_polys]
+    target_polys_bounds = [poly.bounds for poly in target_polys]
+
     pred_areas = torch.zeros((len(pred),))
     for pred_index, pred_poly in enumerate(pred_polys):
         pred_areas[pred_index] = pred_poly.area
+        pred_bounds = pred_polys_bounds[pred_index]
+
         for target_index, target_poly in enumerate(target_polys):
-            if not pred_poly.intersects(target_poly):
+            # Do a cheap intersection test and skip computing the actual
+            # union/intersection if that fails.
+            target_bounds = target_polys_bounds[target_index]
+            if not bounds_intersect(pred_bounds, target_bounds):
                 continue
+
             pt_intersection = pred_poly.intersection(target_poly)
             intersection[pred_index, target_index] = pt_intersection.area
 
