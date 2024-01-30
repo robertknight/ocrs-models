@@ -4,15 +4,14 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-torch = "*"
 numpy = "*"
-torchvision = "*"
 pillow = "*"
 tqdm = "*"
 opencv-python = "*"
 shapely = "*"
 wandb = "*"
 pylev = "*"
+onnx = "*"
 
 [dev-packages]
 black = "*"

@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 from torchvision.transforms.functional import resize, to_pil_image
 import torchvision.transforms as transforms
 from tqdm import tqdm
+import wandb
 
 from .datasets import DDI100, HierText
 from .models import DetectionModel
@@ -84,6 +85,7 @@ def train(
 
         img = img.to(device)
         masks = masks.to(device)
+
         start = time.time()
 
         pred_masks = model(img)
@@ -172,9 +174,12 @@ def test(
 
             test_loss += loss_fn(pred_masks, masks).item()
 
-            for item_index, pred_mask in enumerate(pred_masks):
-                pred_quads = extract_cc_quads(binarize_mask(pred_mask).cpu())
-                target_quads = extract_cc_quads(binarize_mask(masks[item_index]).cpu())
+            bin_pred_masks = binarize_mask(pred_masks).cpu()
+            bin_masks = binarize_mask(masks).cpu()
+
+            for item_index, bin_pred_mask in enumerate(bin_pred_masks):
+                pred_quads = extract_cc_quads(bin_pred_mask)
+                target_quads = extract_cc_quads(bin_masks[item_index])
                 metrics.append(box_match_metrics(pred_quads, target_quads))
 
             if save_debug_images:
@@ -233,6 +238,15 @@ def balanced_cross_entropy_loss(
     pos_mask = target > 0.5
     neg_mask = target < 0.5
 
+    # Clamp target values to ensure they are valid for use with BCE loss.
+    #
+    # The PyTorch transforms used for data augmentation can sometimes result in
+    # values slightly outside the [0, 1] range.
+    #
+    # We assume the predictions have been generated via a sigmoid or similar
+    # that guarantees values in [0, 1].
+    target = target.clamp(0.0, 1.0)
+
     pixel_loss = F.binary_cross_entropy(pred, target, reduction="none")
 
     pos_loss = pos_mask * pixel_loss
@@ -255,7 +269,7 @@ def prepare_transform(mask_size: tuple[int, int], augment) -> nn.Module:
     :param mask_size: HxW output image size
     :param augment: Whether to apply randomized data augmentation
     """
-    resize_transform = transforms.Resize(mask_size)
+    resize_transform = transforms.Resize(mask_size, antialias=False)
     if not augment:
         return resize_transform
 
@@ -288,6 +302,10 @@ def main():
         action="store_true",
         help="Save debugging images during training",
     )
+    parser.add_argument("--export", type=str, help="Export model to ONNX format")
+    parser.add_argument(
+        "--max-epochs", type=int, help="Maximum number of epochs to train for"
+    )
     parser.add_argument(
         "--max-images", type=int, help="Maximum number of images to load"
     )
@@ -314,6 +332,10 @@ def main():
     batch_size = args.batch_size
     max_images = args.max_images
 
+    # Set to aid debugging of initial text detection model
+    pytorch_seed = 1234
+    torch.manual_seed(pytorch_seed)
+
     if max_images:
         validation_max_images = max(10, int(max_images * 0.1))
     else:
@@ -325,7 +347,11 @@ def main():
         args.data_dir, transform=transform, train=True, max_images=max_images
     )
     train_dataloader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, num_workers=2
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        pin_memory=True,
+        num_workers=2,
     )
 
     val_dataset = load_dataset(
@@ -334,10 +360,16 @@ def main():
         train=False,
         max_images=validation_max_images,
     )
-    val_dataloader = DataLoader(val_dataset, batch_size=batch_size)
+    val_dataloader = DataLoader(
+        val_dataset, batch_size=batch_size, pin_memory=True, num_workers=2
+    )
 
-    print(f"Train images {len(train_dataset)} in {len(train_dataloader)} batches")
-    print(f"Validation images {len(val_dataset)} in {len(val_dataloader)} batches")
+    print(
+        f"Training dataset: images {len(train_dataset)} in {len(train_dataloader)} batches"
+    )
+    print(
+        f"Validation dataset: images {len(val_dataset)} in {len(val_dataloader)} batches"
+    )
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = DetectionModel().to(device)
@@ -345,7 +377,7 @@ def main():
     optimizer = torch.optim.Adam(model.parameters())
 
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Model param count {total_params}")
+    print(f"Model param count: {total_params}")
 
     epochs_without_improvement = 0
     min_train_loss = 1.0
@@ -355,6 +387,23 @@ def main():
     if args.checkpoint:
         checkpoint = load_checkpoint(args.checkpoint, model, optimizer, device)
         epoch = checkpoint["epoch"]
+
+    if args.export:
+        if not args.checkpoint:
+            raise Exception("ONNX export requires a checkpoint to load")
+
+        test_batch = next(iter(val_dataloader))
+        test_image = test_batch["image"][0:1]
+
+        torch.onnx.export(
+            model,
+            test_image,
+            args.export,
+            input_names=["image"],
+            output_names=["mask"],
+            dynamic_axes={"image": {0: "batch"}, "mask": {0: "batch"}},
+        )
+        return
 
     if args.validate_only:
         if not args.checkpoint:
@@ -374,7 +423,21 @@ def main():
         print("Validation metrics:", format_metrics(val_metrics))
         return
 
-    while True:
+    # Enable experiment tracking via Weights and Biases if API key set.
+    enable_wandb = bool(os.environ.get("WANDB_API_KEY"))
+    if enable_wandb:
+        wandb.init(
+            project="text-detection",
+            config={
+                "batch_size": args.batch_size,
+                "dataset_size": len(train_dataset),
+                "model_params": total_params,
+                "pytorch_seed": pytorch_seed,
+            },
+        )
+        wandb.watch(model)
+
+    while args.max_epochs is None or epoch < args.max_epochs:
         train_loss = train(
             epoch,
             device,
@@ -396,10 +459,21 @@ def main():
         )
         print(f"Epoch {epoch} validation metrics:", format_metrics(val_metrics))
 
+        if enable_wandb:
+            wandb.log(
+                {
+                    "train_loss": train_loss,
+                    "val_loss": val_loss,
+                    "val_metrics": val_metrics,
+                }
+            )
+
         if train_loss < min_train_loss:
             min_loss = train_loss
             epochs_without_improvement = 0
-            save_checkpoint("checkpoint.pt", model, optimizer, epoch=epoch)
+            save_checkpoint(
+                "text-detection-checkpoint.pt", model, optimizer, epoch=epoch
+            )
         else:
             epochs_without_improvement += 1
 
