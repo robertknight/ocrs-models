@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "ocrs-models"
+version = "0.1.0"
+description = "PyTorch models for the Ocrs OCR engine"
+authors = ["Robert Knight <robertknight@gmail.com>"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+numpy = "^1.26.3"
+pillow = "^10.2.0"
+tqdm = "^4.66.1"
+opencv-python = "^4.9.0.80"
+shapely = "^2.0.2"
+wandb = "^0.16.2"
+pylev = "^1.4.0"
+onnx = "^1.15.0"
+
+[tool.poetry.group.dev.dependencies]
+black = "^24.1.1"
+mypy = "^1.8.0"
+types-Pillow = "^10.2.0.20240125"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
