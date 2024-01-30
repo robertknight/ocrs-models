@@ -59,18 +59,18 @@ tar -xf test.tgz
 
 ## Set up the training environment
 
-1. Install [Pipenv](https://pipenv.pypa.io/en/latest/)
+1. Install [Poetry](https://python-poetry.org)
 2. Install dependencies, except for PyTorch:
 
 	 ```
-	 pipenv install --dev
+	 poetry install
 	 ```
 
 3. Install the appropriate version of PyTorch for your system, in the virtualenv
-   created by pipenv:
+   created by Poetry:
 
    ```
-   pipenv run pip install torch torchvision
+   poetry run pip install torch torchvision
    ```
 
    See https://pytorch.org/get-started/locally/ for an appropriate pip command
@@ -79,7 +79,7 @@ tar -xf test.tgz
 4. Start a dummy training run of text detection training to verify everything is working:
 
 	 ```
-	 pipenv run python -m ocrs_models.train_detection hiertext datasets/hiertext/ --max-images 100
+	 poetry run python -m ocrs_models.train_detection hiertext datasets/hiertext/ --max-images 100
 	 ```
 	
    Wait for one successful epoch of training and validation to complete and then
@@ -101,7 +101,7 @@ export WANDB_API_KEY=<your_api_key>
 To launch a training run for the text detection model, run:
 
 ```
-pipenv run python -m ocrs_models.train_detection hiertext datasets/hiertext/ \
+poetry run python -m ocrs_models.train_detection hiertext datasets/hiertext/ \
   --max-epochs 50 \
   --batch-size 28
 ```
@@ -123,7 +123,7 @@ As training progresses, the latest checkpoint will be saved to
 model to ONNX via:
 
 ```
-pipenv run python -m ocrs_models.train_detection hiertext datasets/hiertext/ \
+poetry run python -m ocrs_models.train_detection hiertext datasets/hiertext/ \
   --checkpoint text-detection-checkpoint.pt \
   --export text-detection.onnx
 ```
@@ -151,7 +151,7 @@ ocrs --detect-model custom-detection-model.rten image.jpg
 To launch a training run for the text recognition model, run:
 
 ```
-pipenv run python -m ocrs_models.train_rec hiertext datasets/hiertext/ \
+poetry run python -m ocrs_models.train_rec hiertext datasets/hiertext/ \
   --max-epochs 50 \
   --batch-size 250
 ```
@@ -171,7 +171,7 @@ As training progresses, the latest checkpoint will be saved to
 ONNX via:
 
 ```
-pipenv run python -m ocrs_models.train_rec hiertext datasets/hiertext/ \
+poetry run python -m ocrs_models.train_rec hiertext datasets/hiertext/ \
   --checkpoint text-rec.pt \
   --export text-recognition.onnx
 ```
