@@ -1,10 +1,7 @@
-from typing import Optional
-
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 import torch
-import torchvision
 from torchvision.transforms.functional import to_pil_image
 
 from shapely.geometry import JOIN_STYLE

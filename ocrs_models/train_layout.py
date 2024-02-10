@@ -114,8 +114,6 @@ def train(
     train_iterable = tqdm(dataloader)
     train_iterable.set_description(f"Training (epoch {epoch})")
     total_loss = 0.0
-    total_line_start_acc = 0.0
-    total_line_end_acc = 0.0
 
     loss = weighted_loss().to(device)
 

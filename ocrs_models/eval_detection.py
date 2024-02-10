@@ -4,7 +4,6 @@ import sys
 
 import torch
 from torchvision.io import ImageReadMode, read_image
-import torch
 from torchvision.transforms.functional import InterpolationMode, resize, to_pil_image
 
 from .models import DetectionModel

@@ -364,7 +364,6 @@ class LayoutModel(nn.Module):
         n_features = 4
         d_model = 256
         d_feedforward = d_model * 4
-        d_embed_hidden = 32
         n_classes = 2
         n_layers = 6
         n_heads = max(d_model // 64, 1)

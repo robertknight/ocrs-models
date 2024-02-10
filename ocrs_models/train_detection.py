@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
-from torchvision.transforms.functional import resize, to_pil_image
+from torchvision.transforms.functional import to_pil_image
 import torchvision.transforms as transforms
 from tqdm import tqdm
 import wandb
@@ -159,7 +159,7 @@ def test(
     n_batches = len(dataloader)
 
     test_iterable = tqdm(dataloader)
-    test_iterable.set_description(f"Testing")
+    test_iterable.set_description("Testing")
 
     metrics = []
     with torch.inference_mode():
@@ -382,7 +382,6 @@ def main():
 
     epochs_without_improvement = 0
     min_train_loss = 1.0
-    min_test_loss = 1.0
     epoch = 0
 
     if args.checkpoint:
@@ -410,7 +409,7 @@ def main():
         if not args.checkpoint:
             parser.exit(
                 1,
-                f"Existing model should be specified with --checkpoint when using --validate-only",
+                "Existing model should be specified with --checkpoint when using --validate-only",
             )
 
         val_loss, val_metrics = test(
@@ -470,7 +469,7 @@ def main():
             )
 
         if train_loss < min_train_loss:
-            min_loss = train_loss
+            min_train_loss = train_loss
             epochs_without_improvement = 0
             save_checkpoint(
                 "text-detection-checkpoint.pt", model, optimizer, epoch=epoch

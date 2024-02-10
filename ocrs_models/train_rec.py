@@ -1,7 +1,6 @@
 from argparse import ArgumentParser, BooleanOptionalAction
 import math
 import os
-from typing import Callable
 
 from pylev import levenshtein
 import torch
@@ -164,7 +163,7 @@ def test(
     model.eval()
 
     test_iterable = tqdm(dataloader)
-    test_iterable.set_description(f"Testing")
+    test_iterable.set_description("Testing")
     mean_loss = 0.0
     stats = RecognitionAccuracyStats()
 
