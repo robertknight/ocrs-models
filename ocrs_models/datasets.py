@@ -141,7 +141,7 @@ class SizedDataset(Dataset, Sized):
 
 class DDI100(SizedDataset):
     """
-    Distorted Document Images (DDI-100) dataset.
+    Distorted Document Images (DDI-100) dataset for text detection.
 
     See https://github.com/machine-intelligence-laboratory/DDI-100
     and https://arxiv.org/abs/1912.11658.
@@ -230,7 +230,7 @@ class DDI100(SizedDataset):
 
 class HierText(SizedDataset):
     """
-    HierText dataset.
+    HierText dataset for text detection.
 
     See https://github.com/google-research-datasets/hiertext and
     https://arxiv.org/abs/2203.15143.
