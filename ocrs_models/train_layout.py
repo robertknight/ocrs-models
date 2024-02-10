@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import wandb
 
-from .datasets import WebLayout
+from .datasets.web_layout import WebLayout
 from .models import LayoutModel
 from .train_detection import load_checkpoint, save_checkpoint, trainable_params
 

@@ -14,7 +14,8 @@ import torchvision.transforms as transforms
 from tqdm import tqdm
 import wandb
 
-from .datasets import DDI100, HierText
+from .datasets.ddi100 import DDI100
+from .datasets.hiertext import HierText
 from .models import DetectionModel
 from .postprocess import box_match_metrics, extract_cc_quads
 

@@ -3,7 +3,7 @@ import json
 
 import torch
 
-from .datasets import draw_word_boxes
+from .datasets.util import draw_word_boxes
 from .models import LayoutModel
 
 

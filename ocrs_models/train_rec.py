@@ -11,13 +11,9 @@ from torch.utils.data import DataLoader, default_collate
 from tqdm import tqdm
 import wandb
 
-from .datasets import (
-    DEFAULT_ALPHABET,
-    HierTextRecognition,
-    ctc_greedy_decode_text,
-    decode_text,
-    text_recognition_data_augmentations,
-)
+from .datasets.hiertext import DEFAULT_ALPHABET, HierTextRecognition
+from .datasets.util import ctc_greedy_decode_text, decode_text
+from .datasets import text_recognition_data_augmentations
 from .models import RecognitionModel
 from .train_detection import load_checkpoint, save_checkpoint
 
