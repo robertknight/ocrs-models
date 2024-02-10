@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import wandb
 
-from .datasets import WebLayout
+from .datasets.web_layout import WebLayout
 from .models import LayoutModel
 from .train_detection import load_checkpoint, save_checkpoint, trainable_params
 
@@ -114,8 +114,6 @@ def train(
     train_iterable = tqdm(dataloader)
     train_iterable.set_description(f"Training (epoch {epoch})")
     total_loss = 0.0
-    total_line_start_acc = 0.0
-    total_line_end_acc = 0.0
 
     loss = weighted_loss().to(device)
 

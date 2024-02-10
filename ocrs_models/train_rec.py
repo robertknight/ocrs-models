@@ -1,7 +1,6 @@
 from argparse import ArgumentParser, BooleanOptionalAction
 import math
 import os
-from typing import Callable
 
 from pylev import levenshtein
 import torch
@@ -11,13 +10,9 @@ from torch.utils.data import DataLoader, default_collate
 from tqdm import tqdm
 import wandb
 
-from .datasets import (
-    DEFAULT_ALPHABET,
-    HierTextRecognition,
-    ctc_greedy_decode_text,
-    decode_text,
-    text_recognition_data_augmentations,
-)
+from .datasets.hiertext import DEFAULT_ALPHABET, HierTextRecognition
+from .datasets.util import ctc_greedy_decode_text, decode_text
+from .datasets import text_recognition_data_augmentations
 from .models import RecognitionModel
 from .train_detection import load_checkpoint, save_checkpoint
 
@@ -168,7 +163,7 @@ def test(
     model.eval()
 
     test_iterable = tqdm(dataloader)
-    test_iterable.set_description(f"Testing")
+    test_iterable.set_description("Testing")
     mean_loss = 0.0
     stats = RecognitionAccuracyStats()
 

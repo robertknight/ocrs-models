@@ -21,6 +21,7 @@ onnx = "^1.15.0"
 black = "^24.1.1"
 mypy = "^1.8.0"
 types-Pillow = "^10.2.0.20240125"
+ruff = "^0.2.1"
 
 [build-system]
 requires = ["poetry-core"]

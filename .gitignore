@@ -1,5 +1,7 @@
 # Model checkpoints
 *.pt
 
-datasets/
-wandb/
+__pycache__/
+
+/datasets
+/wandb
