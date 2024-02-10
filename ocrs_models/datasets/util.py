@@ -36,6 +36,12 @@ def transform_image(img: torch.Tensor) -> torch.Tensor:
 
 
 def untransform_image(img: torch.Tensor) -> torch.Tensor:
+    """
+    Invert the transforms done by `transform_image`.
+
+    :param img: CHW tensor with pixel values in [-0.5, 0.5]
+    :return: 8-bit CHW tensor with values in [0, 255]
+    """
     return ((img + 0.5) * 255.0).type(torch.uint8)
 
 
