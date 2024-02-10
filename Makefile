@@ -1,18 +1,20 @@
 .PHONY: qa
 qa: checkformat lint typecheck
 
+PYTHON_SRCS=ocrs_models
+
 .PHONY: checkformat
 checkformat:
-	poetry run black --check .
+	poetry run ruff format --check $(PYTHON_SRCS)
 
 .PHONY: format
 format:
-	poetry run black ocrs_models
+	poetry run ruff format $(PYTHON_SRCS)
 
 .PHONY: lint
 lint:
-	poetry run ruff ocrs_models
+	poetry run ruff $(PYTHON_SRCS)
 
 .PHONY: typecheck
 typecheck:
-	poetry run mypy ocrs_models
+	poetry run mypy $(PYTHON_SRCS)
