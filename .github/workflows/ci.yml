@@ -25,7 +25,6 @@ jobs:
         run: |
           poetry install
           poetry run pip install torch torchvision
-      - name: Check formatting and types
+      - name: Lint, format and typecheck
         run: |
-          poetry run black --check .
-          poetry run mypy ocrs_models
+          make qa
