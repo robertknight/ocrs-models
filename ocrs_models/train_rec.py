@@ -11,7 +11,8 @@ from tqdm import tqdm
 import wandb
 
 from .datasets.hiertext import DEFAULT_ALPHABET, HierTextRecognition
-from .datasets.util import ctc_greedy_decode_text, decode_text
+from .datasets.trdg import TRDGRecognition
+from .datasets.util import SizedDataset, ctc_greedy_decode_text, decode_text
 from .datasets import text_recognition_data_augmentations
 from .models import RecognitionModel
 from .train_detection import load_checkpoint, save_checkpoint
@@ -310,8 +311,12 @@ def collate_samples(samples: list[dict]) -> dict:
 
 def main():
     parser = ArgumentParser(description="Train text recognition model.")
-    parser.add_argument("dataset_type", type=str, choices=["hiertext"])
-    parser.add_argument("data_dir")
+    parser.add_argument(
+        "dataset_type", type=str, choices=["hiertext", "trdg"], help="Dataset type"
+    )
+    parser.add_argument(
+        "data_dir", help="Path to dataset. Unused if dataset is synthetic."
+    )
     parser.add_argument(
         "--augment",
         default=True,
@@ -344,11 +349,6 @@ def main():
     pytorch_seed = 1234
     torch.manual_seed(pytorch_seed)
 
-    if args.dataset_type == "hiertext":
-        load_dataset = HierTextRecognition
-    else:
-        raise Exception(f"Unknown dataset type {args.dataset_type}")
-
     max_images = args.max_images
     if max_images:
         validation_max_images = args.val_max_images or max_images
@@ -360,25 +360,40 @@ def main():
     else:
         augmentations = None
 
-    train_dataset = load_dataset(
-        args.data_dir, train=True, max_images=max_images, transform=augmentations
-    )
+    match args.dataset_type:
+        case "hiertext":
+            train_dataset = HierTextRecognition(
+                args.data_dir,
+                train=True,
+                max_images=max_images,
+                transform=augmentations,
+            )
+            val_dataset = HierTextRecognition(
+                args.data_dir, train=False, max_images=validation_max_images
+            )
+            shuffle = True
+        case "trdg":
+            if args.max_images is None:
+                raise Exception("Must specify `--max-images` for trdg dataset")
+            train_dataset = TRDGRecognition(max_images=max_images)
+            val_dataset = TRDGRecognition(max_images=validation_max_images)
+            shuffle = False
+        case _:
+            raise Exception(f"Unknown dataset type {args.dataset_type}")
+
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
-        shuffle=True,
+        shuffle=shuffle,
         collate_fn=collate_samples,
         num_workers=2,
         pin_memory=True,
     )
 
-    val_dataset = load_dataset(
-        args.data_dir, train=False, max_images=validation_max_images
-    )
     val_dataloader = DataLoader(
         val_dataset,
         batch_size=args.batch_size,
-        shuffle=True,
+        shuffle=shuffle,
         collate_fn=collate_samples,
         num_workers=2,
         pin_memory=True,
@@ -431,7 +446,9 @@ def main():
             project="text-recognition",
             config={
                 "batch_size": args.batch_size,
-                "dataset_size": len(train_dataset),
+                "dataset_size": len(train_dataset)
+                if isinstance(train_dataset, SizedDataset)
+                else None,
                 "model_params": total_params,
                 "pytorch_seed": pytorch_seed,
             },

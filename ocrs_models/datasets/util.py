@@ -1,5 +1,5 @@
 from collections.abc import Sized
-from typing import Optional
+from typing import Optional, TypedDict
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -22,6 +22,47 @@ Number of pixels by which text regions are shrunk in the text mask.
 Each edge in a text polygon is offset by this number of pixels before being
 used to draw and fill an area in the text mask.
 """
+
+
+DEFAULT_ALPHABET = (
+    " 0123456789!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+    + chr(8364)  # Euro symbol. Escaped to work around issue in Vim + tmux.
+    + "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+)
+"""
+Default alphabet used by text recognition models.
+
+This closely matches the English "gen2" model from EasyOCR.
+"""
+
+REC_INPUT_HEIGHT = 64
+"""
+Height for input line images in text recognition models.
+"""
+
+
+class TextRecSample(TypedDict):
+    """
+    Sample dict yielded by text recognition data generators.
+    """
+
+    image_id: int | str
+    """ID of the image in the dataset."""
+
+    image: torch.Tensor
+    """
+    CHW tensor of text line image to be recognized.
+
+    The `H` dimension should match `REC_INPUT_HEIGHT`.
+    """
+
+    text_seq: torch.Tensor
+    """
+    Encoded text sequence for the line.
+
+    This is a `[len(text)]` tensor of class indices, which can be generated with
+    `encode_text`.
+    """
 
 
 def transform_image(img: torch.Tensor) -> torch.Tensor:

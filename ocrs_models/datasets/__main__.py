@@ -1,4 +1,5 @@
 from argparse import ArgumentParser, BooleanOptionalAction
+from itertools import islice
 from typing import Callable, cast
 import os
 
@@ -8,7 +9,14 @@ from torchvision.utils import draw_segmentation_masks
 from . import text_recognition_data_augmentations
 from .ddi100 import DDI100
 from .hiertext import HierText, HierTextRecognition
-from .util import SizedDataset, untransform_image, decode_text, draw_word_boxes
+from .trdg import TRDGRecognition
+from .util import (
+    SizedDataset,
+    TextRecSample,
+    untransform_image,
+    decode_text,
+    draw_word_boxes,
+)
 from .web_layout import WebLayout
 
 parser = ArgumentParser(
@@ -21,7 +29,7 @@ running this command.
 )
 parser.add_argument(
     "dataset_type",
-    choices=["ddi", "hiertext", "hiertext-rec", "web-layout"],
+    choices=["ddi", "hiertext", "hiertext-rec", "web-layout", "trdg"],
     help="Dataset to load",
 )
 parser.add_argument("root_dir", help="Root directory of dataset")
@@ -49,6 +57,30 @@ def filter_item(path: str) -> bool:
     if args.filter is None:
         return True
     return args.filter in path
+
+
+def path_safe(text: str) -> str:
+    """
+    Sanitize `text` for use in a filename.
+
+    This does basic sanitization needed for Linux and macOS. It doesn't deal
+    with the myriad of issues that arise on Windows.
+    """
+    return text.replace("/", "_").replace(":", "_")
+
+
+def save_text_rec_sample(item: TextRecSample, out_dir: str, alphabet: list[str]):
+    """
+    Write a sample from a text recognition dataset as a PNG image in `out_dir`.
+    """
+
+    img = item["image"]
+    image_id = item["image_id"]
+    text_seq = item["text_seq"]
+    text = decode_text(text_seq, alphabet)
+    text_path_safe = path_safe(text)
+    line_img_path = f"{out_dir}/line-{image_id}-{text_path_safe}.png"
+    write_png(untransform_image(img), line_img_path)
 
 
 dataset: SizedDataset
@@ -94,21 +126,16 @@ match args.dataset_type:
             max_images=args.max_images,
             transform=augmentations,
         )
-
         for i in range(len(dataset)):
             item = dataset[i]
-            img = item["image"]
-            image_id = item["image_id"]
-            text_seq = item["text_seq"]
-            text = decode_text(text_seq, dataset.alphabet)
+            save_text_rec_sample(item, args.out_dir, dataset.alphabet)
 
-            print(
-                f'Text line {i} image {image_id} size {list(img.shape[1:])} text "{text}"'
-            )
-            text_path_safe = text.replace("/", "_").replace(":", "_")
-            line_img_path = f"{args.out_dir}/line-{i}-{image_id}-{text_path_safe}.png"
+    case "trdg":
+        max_images = args.max_images or 100
+        trdg_dataset = TRDGRecognition()
+        for item in islice(trdg_dataset, max_images):
+            save_text_rec_sample(item, args.out_dir, trdg_dataset.alphabet)
 
-            write_png(untransform_image(img), line_img_path)
     case "web-layout":
         dataset = WebLayout(
             args.root_dir,

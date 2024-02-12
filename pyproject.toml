@@ -16,6 +16,7 @@ shapely = "^2.0.2"
 wandb = "^0.16.2"
 pylev = "^1.4.0"
 onnx = "^1.15.0"
+trdg = {git = "https://github.com/robertknight/TextRecognitionDataGenerator.git", rev = "patched"}
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.8.0"

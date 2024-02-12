@@ -9,8 +9,11 @@ from torchvision.transforms.functional import resize
 import tqdm
 
 from .util import (
+    DEFAULT_ALPHABET,
+    REC_INPUT_HEIGHT,
     Polygon,
     SizedDataset,
+    TextRecSample,
     bounding_box_size,
     clamp,
     encode_text,
@@ -130,18 +133,6 @@ class HierText(SizedDataset):
                     out_fp.write(f"{ann_json}\n")
 
 
-DEFAULT_ALPHABET = (
-    " 0123456789!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
-    + chr(8364)  # Euro symbol. Escaped to work around issue in Vim + tmux.
-    + "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-)
-"""
-Default alphabet used by text recognition models.
-
-This closely matches the English "gen2" model from EasyOCR.
-"""
-
-
 class HierTextRecognition(SizedDataset):
     """
     HierText dataset for text recognition.
@@ -160,7 +151,7 @@ class HierTextRecognition(SizedDataset):
         transform=None,
         max_images=None,
         alphabet: Optional[list[str]] = None,
-        output_height: int = 64,
+        output_height: int = REC_INPUT_HEIGHT,
     ):
         super().__init__()
 
@@ -235,7 +226,7 @@ class HierTextRecognition(SizedDataset):
     def __len__(self):
         return len(self._text_lines)
 
-    def __getitem__(self, idx: int):
+    def __getitem__(self, idx: int) -> TextRecSample:
         """
         Return a dict containing a line image and sequence label vector.
 
