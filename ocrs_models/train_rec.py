@@ -103,12 +103,14 @@ def train(
 
     loss = CTCLoss()
     total_grad_norm = 0.0
+    n_images = 0
 
     for batch_idx, batch in enumerate(train_iterable):
         # nb. Divide input_lengths by 4 to match the downsampling that the
         # model's CNN does.
         input_lengths = batch["image_width"].div(4, rounding_mode="floor")
         img = batch["image"].to(device)
+        n_images += img.size(0)
 
         text_seq = batch["text_seq"].to(device)
         target_lengths = batch["text_len"]
@@ -152,11 +154,11 @@ def train(
 
         mean_loss += batch_loss.item()
 
-    mean_grad_norm = total_grad_norm / len(train_iterable)
+    mean_grad_norm = total_grad_norm / n_images
     print(f"Mean grad norm {mean_grad_norm}")
 
     train_iterable.clear()
-    mean_loss /= len(dataloader)
+    mean_loss /= n_images
     return mean_loss, stats
 
 
@@ -178,6 +180,7 @@ def test(
     stats = RecognitionAccuracyStats()
 
     loss = CTCLoss()
+    n_images = 0
 
     with torch.no_grad():
         for batch_idx, batch in enumerate(test_iterable):
@@ -185,6 +188,7 @@ def test(
             # model's CNN does.
             input_lengths = batch["image_width"].div(4, rounding_mode="floor")
             img = batch["image"].to(device)
+            n_images += img.size(0)
 
             text_seq = batch["text_seq"].to(device)
             target_lengths = batch["text_len"]
@@ -213,7 +217,7 @@ def test(
             mean_loss += batch_loss.item()
 
     test_iterable.clear()
-    mean_loss /= len(dataloader)
+    mean_loss /= n_images
     return mean_loss, stats
 
 
