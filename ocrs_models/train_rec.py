@@ -329,6 +329,11 @@ def main():
         "--max-images", type=int, help="Maximum number of items to train on"
     )
     parser.add_argument(
+        "--val-max-images",
+        type=int,
+        help="Maximum number of images to use for validation",
+    )
+    parser.add_argument(
         "--validate-only",
         action="store_true",
         help="Run validation on an exiting model",
@@ -346,7 +351,7 @@ def main():
 
     max_images = args.max_images
     if max_images:
-        validation_max_images = max(10, int(max_images * 0.1))
+        validation_max_images = args.val_max_images or max_images
     else:
         validation_max_images = None
 
