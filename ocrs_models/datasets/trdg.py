@@ -17,6 +17,17 @@ from .util import (
 )
 
 
+def load_trdg_dict(filename: str) -> list[str]:
+    """
+    Load a list of words from one of the dictionaries in the `trdg` package.
+
+    :param filename: Name of the dict file inside trdg's `dicts/` dir
+    """
+    trdg_files = importlib.resources.files(trdg)
+    dict_path = trdg_files.joinpath("dicts").joinpath(filename)
+    return load_dict(dict_path)
+
+
 class TRDGRecognition(IterableDataset):
     """
     Synthetic image generator for text recognition using TextRecognitionDataGenerator.
@@ -49,9 +60,13 @@ class TRDGRecognition(IterableDataset):
         # each randomly chosen from a dictionary.
         max_words = 10
         string_count = max_images or 1024
-        trdg_files = importlib.resources.files(trdg)
-        dict_path = trdg_files.joinpath("dicts").joinpath("en.txt")
-        lang_dict = load_dict(dict_path)
+
+        # Dictionary words.
+        lang_dict = load_trdg_dict("en.txt")
+
+        # TODO - Add in a certain percentage of numbers, symbols etc. to get
+        # coverage of all characters.
+
         self.strings = create_strings_from_dict(
             max_words, allow_variable=True, count=string_count, lang_dict=lang_dict
         )
@@ -76,18 +91,21 @@ class TRDGRecognition(IterableDataset):
                 # it writes the image to a file.
                 "out_dir": None,
                 "size": REC_INPUT_HEIGHT,
-                # Arguments with default values
-                "extension": "jpg",
-                "skewing_angle": 0,
-                "random_skew": False,  # Randomize skew in +/- `skewing_angle`
-                "blur": 0,  # Gaussian blur radius
-                "random_blur": False,  # Randomize blur between 0 and `blur`
-                "background_type": 0,
+                "extension": "jpg",  # Unused
+                # Max skew angle in degrees. Even though this is small, it ends
+                # up being quite signficant for long lines.
+                "skewing_angle": 2,
+                "random_skew": True,  # Randomize skew in +/- `skewing_angle`
+                # Max random blur. This is about the maximum value that can be
+                # used for (almost) all samples to remain human readable.
+                "blur": 2,
+                "random_blur": True,  # Randomize blur between 0 and `blur`
+                "background_type": 0,  # Gaussian noise
                 # nb. Misspelling of "distortion" is intentional here.
-                "distorsion_type": 0,
+                "distorsion_type": 0,  # No distortion
                 "distorsion_orientation": 0,
                 "is_handwritten": False,
-                "name_format": 0,
+                "name_format": 0,  # Filename format. Unused.
                 "width": -1,  # -1 means "adjust to width of text"
                 "alignment": 0,  # 0 means left-align
                 "text_color": "black",
@@ -98,6 +116,8 @@ class TRDGRecognition(IterableDataset):
                 "fit": False,  # Whether to apply tight crop around text
                 "output_mask": False,  # Whether to return masks for text.
                 "word_split": False,
+                # Directory for background images. Only used if
+                # `background_type` specifies images.
                 "image_dir": None,
             }
             pil_image = FakeTextDataGenerator.generate(**gen_args)
