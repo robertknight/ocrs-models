@@ -1,4 +1,5 @@
 import importlib
+import os.path
 from typing import Generator, Optional
 
 from torch.utils.data import IterableDataset
@@ -26,6 +27,27 @@ def load_trdg_dict(filename: str) -> list[str]:
     trdg_files = importlib.resources.files(trdg)
     dict_path = trdg_files.joinpath("dicts").joinpath(filename)
     return load_dict(dict_path)
+
+
+ALL_CAPS_LATIN_FONTS = [
+    "Amatic",
+    "BEBAS",
+    "Capture",
+    "SEASRN",
+]
+"""Latin fonts supplied with trdg which use all-uppercase letters."""
+
+
+def _is_uppercase_font(path: str) -> bool:
+    """Return true if the font with a given path is known to be all-caps."""
+
+    filename, _ext = os.path.splitext(os.path.basename(path))
+
+    for prefix in ALL_CAPS_LATIN_FONTS:
+        if filename.startswith(prefix):
+            return True
+
+    return False
 
 
 class TRDGRecognition(IterableDataset):
@@ -75,6 +97,13 @@ class TRDGRecognition(IterableDataset):
         image_index = 0
         while self.max_images is None or image_index < self.max_images:
             text = self.strings[image_index % len(self.strings)]
+            font = self.fonts[image_index % len(self.fonts)]
+
+            # If the font uses all-caps, it is unknown which case the original
+            # letters used. Resolve the ambiguity by making all target letters
+            # uppercase too.
+            if _is_uppercase_font(font):
+                text = text.upper()
 
             # Most of the arguments for FakeTextDataGenerator.generate in
             # the `trdg` tool come directly from CLI arguments. See
@@ -86,7 +115,7 @@ class TRDGRecognition(IterableDataset):
             gen_args = {
                 "index": image_index,
                 "text": text,
-                "font": self.fonts[image_index % len(self.fonts)],
+                "font": font,
                 # If `out_dir` is None, `generate` returns a PIL Image, otherwise
                 # it writes the image to a file.
                 "out_dir": None,
