@@ -27,7 +27,11 @@ class RecognitionAccuracyStats:
         self.char_errors = 0
 
     def update(
-        self, targets: torch.Tensor, target_lengths: list[int], preds: torch.Tensor
+        self,
+        targets: torch.Tensor,
+        target_lengths: list[int],
+        preds: torch.Tensor,
+        pred_lengths: list[int],
     ):
         """
         Update running statistics given targets and predictions for a batch of images.
@@ -35,7 +39,12 @@ class RecognitionAccuracyStats:
         :param targets: [batch, seq] tensor of target character indices
         :param target_lengths: Lengths of target sequences
         :param preds: [seq, batch, class] tensor of character predictions
+        :param pred_lengths: Lengths of predicted sequences
         """
+
+        assert len(target_lengths) == targets.size(0)
+        assert len(pred_lengths) == preds.size(1)
+
         total_chars = sum(target_lengths)
         char_errors = 0
 
@@ -50,9 +59,9 @@ class RecognitionAccuracyStats:
 
         alphabet_chars = list(DEFAULT_ALPHABET)
 
-        for y, x in zip(targets_list, preds_list):
+        for y, x, x_len in zip(targets_list, preds_list, pred_lengths):
             target_text = decode_text(y, alphabet_chars)
-            pred_text = ctc_greedy_decode_text(x, alphabet_chars)
+            pred_text = ctc_greedy_decode_text(x[:x_len], alphabet_chars)
             char_errors += levenshtein(target_text, pred_text)
 
         self.total_chars += total_chars
@@ -111,15 +120,16 @@ def train(
             pred_seq = model(img)
             batch_loss = loss(pred_seq, text_seq, input_lengths, target_lengths)
 
-        stats.update(text_seq, target_lengths, pred_seq)
+        stats.update(text_seq, target_lengths, pred_seq, input_lengths)
 
         # Preview decoded text for first batch in the dataset.
         if batch_idx == 0:
             for i in range(min(10, len(text_seq))):
                 y = text_seq[i]
                 x = pred_seq[:, i, :].argmax(-1)
+                x_len = input_lengths[i]
                 target_text = decode_text(y, list(DEFAULT_ALPHABET))
-                pred_text = ctc_greedy_decode_text(x, list(DEFAULT_ALPHABET))
+                pred_text = ctc_greedy_decode_text(x[:x_len], list(DEFAULT_ALPHABET))
                 print(f'Sample train prediction "{pred_text}" target "{target_text}"')
 
         if math.isnan(batch_loss.item()):
@@ -182,15 +192,19 @@ def test(
             # Predict [seq, batch, class] from [batch, 1, height, width].
             pred_seq = model(img)
 
-            stats.update(text_seq, target_lengths, pred_seq)
+            stats.update(text_seq, target_lengths, pred_seq, input_lengths)
 
             # Preview decoded text for first batch in the dataset.
             if batch_idx == 0:
                 for i in range(min(10, len(text_seq))):
                     y = text_seq[i]
                     x = pred_seq[:, i, :].argmax(-1)
+                    x_len = input_lengths[i]
+
                     target_text = decode_text(y, list(DEFAULT_ALPHABET))
-                    pred_text = ctc_greedy_decode_text(x, list(DEFAULT_ALPHABET))
+                    pred_text = ctc_greedy_decode_text(
+                        x[:x_len], list(DEFAULT_ALPHABET)
+                    )
                     print(
                         f'Sample test prediction "{pred_text}" target "{target_text}"'
                     )
