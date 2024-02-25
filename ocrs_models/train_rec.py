@@ -256,28 +256,50 @@ def collate_samples(samples: list[dict]) -> dict:
     def image_width(sample: dict) -> int:
         return sample["image"].shape[-1]
 
+    # Factor by which the model's output sequence length is reduced compared to
+    # the width of the input image.
+    downsample_factor = 4
+
     # Determine width of batched tensors. We round up the value to reduce the
     # variation in tensor sizes across batches. Having too many distinct tensor
     # sizes has been observed to lead to memory fragmentation and ultimately
     # memory exhaustion when training on GPUs.
-    max_img_len = round_up(max([image_width(s) for s in samples]), 250)
-    max_text_len = round_up(max([text_len(s) for s in samples]), 250)
+    img_width_step = 256
+    max_img_width = max(image_width(s) for s in samples)
+    max_img_width = round_up(max_img_width, img_width_step)
+
+    max_text_len = max(text_len(s) for s in samples)
+    max_text_len = round_up(max_text_len, img_width_step // downsample_factor)
 
     # Remove samples where the target text is incompatible with the width of
     # the image after downsampling by the model's CNN, which reduces the
-    # width by 4x.
+    # width by `downsample_factor`.
     samples = [
         s
         for s in samples
-        if ctc_input_and_target_compatible(image_width(s) // 4, s["text_seq"])
+        if ctc_input_and_target_compatible(
+            image_width(s) // downsample_factor, s["text_seq"]
+        )
     ]
 
-    for s in samples:
-        s["text_len"] = text_len(s)
-        s["text_seq"] = F.pad(s["text_seq"], [0, max_text_len - s["text_len"]])
+    for sample in samples:
+        text_pad_value = 0  # CTC blank label
+        sample["text_len"] = text_len(sample)
+        sample["text_seq"] = F.pad(
+            sample["text_seq"],
+            [0, max_text_len - sample["text_len"]],
+            mode="constant",
+            value=text_pad_value,
+        )
 
-        s["image_width"] = image_width(s)
-        s["image"] = F.pad(s["image"], [0, max_img_len - s["image_width"]])
+        image_pad_value = 0.0  # Grey, since image values are in [-0.5, 0.5]
+        sample["image_width"] = image_width(sample)
+        sample["image"] = F.pad(
+            sample["image"],
+            [0, max_img_width - sample["image_width"]],
+            mode="constant",
+            value=image_pad_value,
+        )
 
     return default_collate(samples)
 
