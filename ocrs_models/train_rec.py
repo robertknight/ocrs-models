@@ -4,7 +4,6 @@ import os
 
 from pylev import levenshtein
 import torch
-from torch.nn import CTCLoss
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, default_collate
 from tqdm import tqdm
@@ -83,6 +82,29 @@ class RecognitionAccuracyStats:
         }
 
 
+def avg_ctc_loss(
+    log_probs: torch.Tensor,
+    targets: torch.Tensor,
+    input_lengths: torch.Tensor,
+    target_lengths: torch.Tensor,
+) -> torch.Tensor:
+    """
+    Return the CTC loss, averaged over the batch size.
+
+    See `torch.nn.functional.ctc_loss` for parameter details. This function
+    differs from `ctc_loss(..., reduction="mean")` in that it doesn't divide
+    by the target lengths, producing larger gradients.
+    """
+
+    # See also https://discuss.pytorch.org/t/proper-way-to-use-torch-nn-ctcloss/28909
+    # for discussion on different reduction modes.
+    batch_size = log_probs.size(1)
+    loss = F.ctc_loss(
+        log_probs, targets, input_lengths, target_lengths, reduction="sum"
+    )
+    return loss / batch_size
+
+
 def train(
     epoch: int,
     device: torch.device,
@@ -102,7 +124,6 @@ def train(
     mean_loss = 0.0
     stats = RecognitionAccuracyStats()
 
-    loss = CTCLoss()
     total_grad_norm = 0.0
     n_images = 0
 
@@ -121,7 +142,7 @@ def train(
         with torch.autocast(device_type=device.type, dtype=torch.bfloat16):
             # Predict [seq, batch, class] from [batch, 1, height, width].
             pred_seq = model(img)
-            batch_loss = loss(pred_seq, text_seq, input_lengths, target_lengths)
+            batch_loss = avg_ctc_loss(pred_seq, text_seq, input_lengths, target_lengths)
 
         stats.update(text_seq, target_lengths, pred_seq, input_lengths)
 
@@ -180,7 +201,6 @@ def test(
     mean_loss = 0.0
     stats = RecognitionAccuracyStats()
 
-    loss = CTCLoss()
     n_images = 0
 
     with torch.no_grad():
@@ -214,7 +234,7 @@ def test(
                         f'Sample test prediction "{pred_text}" target "{target_text}"'
                     )
 
-            batch_loss = loss(pred_seq, text_seq, input_lengths, target_lengths)
+            batch_loss = avg_ctc_loss(pred_seq, text_seq, input_lengths, target_lengths)
             mean_loss += batch_loss.item()
 
     test_iterable.clear()
