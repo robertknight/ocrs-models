@@ -1,5 +1,4 @@
 from argparse import ArgumentParser, BooleanOptionalAction
-from itertools import islice
 from typing import Callable, cast
 import os
 
@@ -132,8 +131,9 @@ match args.dataset_type:
 
     case "trdg":
         max_images = args.max_images or 100
-        trdg_dataset = TRDGRecognition()
-        for item in islice(trdg_dataset, max_images):
+        trdg_dataset = TRDGRecognition(max_images)
+        for i in range(len(trdg_dataset)):
+            item = trdg_dataset[i]
             save_text_rec_sample(item, args.out_dir, trdg_dataset.alphabet)
 
     case "web-layout":

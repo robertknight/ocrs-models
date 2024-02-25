@@ -360,6 +360,7 @@ def main():
     else:
         augmentations = None
 
+    shuffle = True
     match args.dataset_type:
         case "hiertext":
             train_dataset = HierTextRecognition(
@@ -371,13 +372,11 @@ def main():
             val_dataset = HierTextRecognition(
                 args.data_dir, train=False, max_images=validation_max_images
             )
-            shuffle = True
         case "trdg":
             if args.max_images is None:
-                raise Exception("Must specify `--max-images` for trdg dataset")
-            train_dataset = TRDGRecognition(max_images=max_images)
-            val_dataset = TRDGRecognition(max_images=validation_max_images)
-            shuffle = False
+                raise Exception("Must specify `max-images` for trdg dataset")
+            train_dataset = TRDGRecognition(max_images)
+            val_dataset = TRDGRecognition(validation_max_images)
         case _:
             raise Exception(f"Unknown dataset type {args.dataset_type}")
 
