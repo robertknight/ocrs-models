@@ -317,6 +317,7 @@ def main():
     parser.add_argument("--batch-size", type=int, default=20)
     parser.add_argument("--checkpoint", type=str, help="Model checkpoint to load")
     parser.add_argument("--export", type=str, help="Export model to ONNX format")
+    parser.add_argument("--lr", type=float, help="Initial learning rate")
     parser.add_argument(
         "--max-epochs", type=int, help="Maximum number of epochs to train for"
     )
@@ -377,9 +378,10 @@ def main():
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = RecognitionModel(alphabet=DEFAULT_ALPHABET).to(device)
 
-    optimizer = torch.optim.Adam(model.parameters())
+    initial_lr = args.lr or 1e-3  # 1e-3 is the Adam default
+    optimizer = torch.optim.Adam(model.parameters(), lr=initial_lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, factor=0.1, patience=3, verbose=True
+        optimizer, factor=0.1, patience=3
     )
 
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -442,6 +444,8 @@ def main():
         )
 
         scheduler.step(val_loss)
+
+        print(f"Current learning rate {scheduler.get_last_lr()}")
 
         if enable_wandb:
             wandb.log(
