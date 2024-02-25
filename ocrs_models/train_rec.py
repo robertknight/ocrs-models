@@ -334,6 +334,9 @@ def main():
         "--max-images", type=int, help="Maximum number of items to train on"
     )
     parser.add_argument(
+        "--max-words", type=int, help="Max words per line for synthetic data generators"
+    )
+    parser.add_argument(
         "--val-max-images",
         type=int,
         help="Maximum number of images to use for validation",
@@ -375,8 +378,13 @@ def main():
         case "trdg":
             if args.max_images is None:
                 raise Exception("Must specify `max-images` for trdg dataset")
-            train_dataset = TRDGRecognition(max_images)
-            val_dataset = TRDGRecognition(validation_max_images)
+
+            trdg_kwargs = {}
+            if args.max_words:
+                trdg_kwargs["max_words"] = args.max_words
+
+            train_dataset = TRDGRecognition(max_images, **trdg_kwargs)
+            val_dataset = TRDGRecognition(validation_max_images, **trdg_kwargs)
         case _:
             raise Exception(f"Unknown dataset type {args.dataset_type}")
 
