@@ -1,5 +1,6 @@
 import importlib
 import os.path
+import random
 from typing import Callable, Optional
 
 import torch
@@ -52,6 +53,30 @@ def _is_uppercase_font(path: str) -> bool:
     return False
 
 
+def gen_random_strings(alphabet: str, count: int, max_words: int) -> list[str]:
+    """
+    Generate strings of words with random characters.
+
+    :param alphabet: Alphabet to draw from
+    :param count: Number of strings to generate
+    :param max_words: Max words per string
+    """
+    max_word_len = 10
+    strings = []
+    for _ in range(count):
+        n_words = random.randint(1, max_words)
+        words = []
+        for _ in range(n_words):
+            word_len = random.randint(1, max_word_len)
+            word = ""
+            for _ in range(word_len):
+                char_idx = random.randrange(len(alphabet))
+                word += alphabet[char_idx]
+            words.append(word)
+        strings.append(" ".join(words))
+    return strings
+
+
 TensorTransform = Callable[[Tensor], Tensor]
 
 
@@ -99,14 +124,24 @@ class TRDGRecognition(SizedDataset):
 
         lang_dict = load_trdg_dict("en.txt")
 
-        # TODO - Add in a certain percentage of numbers, symbols etc. to get
-        # coverage of all characters.
+        # Generate `image_count` strings from a mixture of sources.
+        n_random_strings = 0
+        n_dict_strings = 0
+        for _ in range(image_count):
+            x = random.random()
+            if x > 0.8:
+                n_random_strings += 1
+            else:
+                n_dict_strings += 1
 
-        # Generate strings with between 1 and `max_words` words, each
-        # randomly chosen from a dictionary.
-        self.strings = create_strings_from_dict(
-            max_words, allow_variable=True, count=image_count, lang_dict=lang_dict
+        self.strings = []
+        self.strings += create_strings_from_dict(
+            max_words, allow_variable=True, count=n_dict_strings, lang_dict=lang_dict
         )
+        self.strings += gen_random_strings(
+            "".join(self.alphabet), count=n_random_strings, max_words=max_words
+        )
+        random.shuffle(self.strings)
 
     def __len__(self):
         return self.image_count
