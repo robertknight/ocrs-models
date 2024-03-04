@@ -403,7 +403,9 @@ def main():
             if args.max_words:
                 trdg_kwargs["max_words"] = args.max_words
 
-            train_dataset = TRDGRecognition(max_images, **trdg_kwargs)
+            train_dataset = TRDGRecognition(
+                max_images, transform=augmentations, **trdg_kwargs
+            )
             val_dataset = TRDGRecognition(validation_max_images, **trdg_kwargs)
         case _:
             raise Exception(f"Unknown dataset type {args.dataset_type}")

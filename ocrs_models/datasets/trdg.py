@@ -1,6 +1,9 @@
 import importlib
 import os.path
+from typing import Callable, Optional
 
+import torch
+from torch import Tensor
 from torchvision.transforms.functional import pil_to_tensor, to_grayscale
 import trdg
 from trdg.data_generator import FakeTextDataGenerator
@@ -49,6 +52,9 @@ def _is_uppercase_font(path: str) -> bool:
     return False
 
 
+TensorTransform = Callable[[Tensor], Tensor]
+
+
 class TRDGRecognition(SizedDataset):
     """
     Synthetic image generator for text recognition using TextRecognitionDataGenerator.
@@ -66,11 +72,25 @@ class TRDGRecognition(SizedDataset):
     fonts: list[str]
     """Paths of font files to use when generating text."""
 
-    def __init__(self, image_count, max_words=10):
+    transform: Optional[TensorTransform]
+    """
+    Additional data augmentations to apply.
+
+    These augmentations are applied after the built-in randomization of the
+    synthetic text generator.
+    """
+
+    def __init__(
+        self,
+        image_count: int,
+        max_words=10,
+        transform: Optional[TensorTransform] = None,
+    ):
         super().__init__()
 
         self.alphabet = [c for c in DEFAULT_ALPHABET]
         self.image_count = image_count
+        self.transform = transform
 
         # See `fonts` directory in trdg package for names of supported font
         # collections.
@@ -137,8 +157,8 @@ class TRDGRecognition(SizedDataset):
             "orientation": 0,  # 0 means horizontal, 1 means vertical
             "space_width": 1.0,  # Scaling factor for normal width of words
             "character_spacing": 0,  # Width of spaces between chars in pixels
-            "margins": (5, 5, 5, 5),  # Typed as `int`, but actually `tuple(int)`
-            "fit": False,  # Whether to apply tight crop around text
+            "margins": (0, 0, 0, 0),  # Typed as `int`, but actually `tuple(int)`
+            "fit": True,  # Whether to apply tight crop around text
             "output_mask": False,  # Whether to return masks for text.
             "word_split": False,
             # Directory for background images. Only used if
@@ -149,6 +169,15 @@ class TRDGRecognition(SizedDataset):
         pil_image = to_grayscale(pil_image)
         image = pil_to_tensor(pil_image)
         image = transform_image(image)
+
+        if self.transform:
+            image = self.transform(image)
+
+            # Brightness / contrast transforms may have moved pixel values
+            # outside of the legal range of [-0.5, 0.5] for normalized images.
+            #
+            # Clamp to bring these values back into that range.
+            image = image.clamp(-0.5, 0.5)
 
         text_seq = encode_text(text, self.alphabet, unknown_char="?")
         sample: TextRecSample = {

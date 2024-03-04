@@ -82,6 +82,11 @@ def save_text_rec_sample(item: TextRecSample, out_dir: str, alphabet: list[str])
     write_png(untransform_image(img), line_img_path)
 
 
+if args.augment:
+    rec_augmentations = text_recognition_data_augmentations()
+else:
+    rec_augmentations = None
+
 dataset: SizedDataset
 match args.dataset_type:
     case "ddi" | "hiertext":
@@ -114,16 +119,11 @@ match args.dataset_type:
             seg_img = draw_segmentation_masks(rgb_img, mask_hw, alpha=0.3, colors="red")
             write_png(seg_img, f"{args.out_dir}/seg-{i}.png")
     case "hiertext-rec":
-        if args.augment:
-            augmentations = text_recognition_data_augmentations()
-        else:
-            augmentations = None
-
         dataset = HierTextRecognition(
             args.root_dir,
             train=args.subset == "train",
             max_images=args.max_images,
-            transform=augmentations,
+            transform=rec_augmentations,
         )
         for i in range(len(dataset)):
             item = dataset[i]
@@ -131,7 +131,7 @@ match args.dataset_type:
 
     case "trdg":
         max_images = args.max_images or 100
-        trdg_dataset = TRDGRecognition(max_images)
+        trdg_dataset = TRDGRecognition(max_images, transform=rec_augmentations)
         for i in range(len(trdg_dataset)):
             item = trdg_dataset[i]
             save_text_rec_sample(item, args.out_dir, trdg_dataset.alphabet)
