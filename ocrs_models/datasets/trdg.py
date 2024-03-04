@@ -4,7 +4,7 @@ from typing import Callable, Optional
 
 import torch
 from torch import Tensor
-from torchvision.transforms.functional import pil_to_tensor, to_grayscale
+from torchvision.transforms.functional import invert, pil_to_tensor, to_grayscale
 import trdg
 from trdg.data_generator import FakeTextDataGenerator
 from trdg.string_generator import create_strings_from_dict
@@ -121,6 +121,12 @@ class TRDGRecognition(SizedDataset):
         if _is_uppercase_font(font):
             text = text.upper()
 
+        # Randomized scaling factor for standard word spacing.
+        word_space_scale = (torch.rand(()).item() * 2) + 0.5
+
+        # Char spacing in pixels
+        char_space = int(torch.rand(()).item() * 10)
+
         # Most of the arguments for FakeTextDataGenerator.generate in
         # the `trdg` tool come directly from CLI arguments. See
         # https://github.com/robertknight/TextRecognitionDataGenerator/blob/c1103c99d01b3181ddba50aa17bd880e3bc6f0bd/trdg/run.py#L440.
@@ -147,7 +153,7 @@ class TRDGRecognition(SizedDataset):
             "random_blur": True,  # Randomize blur between 0 and `blur`
             "background_type": 0,  # Gaussian noise
             # nb. Misspelling of "distortion" is intentional here.
-            "distorsion_type": 0,  # No distortion
+            "distorsion_type": 3,  # Random distortion (sine wave, cosine wave, none)
             "distorsion_orientation": 0,
             "is_handwritten": False,
             "name_format": 0,  # Filename format. Unused.
@@ -155,8 +161,8 @@ class TRDGRecognition(SizedDataset):
             "alignment": 0,  # 0 means left-align
             "text_color": "black",
             "orientation": 0,  # 0 means horizontal, 1 means vertical
-            "space_width": 1.0,  # Scaling factor for normal width of words
-            "character_spacing": 0,  # Width of spaces between chars in pixels
+            "space_width": word_space_scale,  # Scaling factor for normal width of words
+            "character_spacing": char_space,  # Width of spaces between chars in pixels
             "margins": (0, 0, 0, 0),  # Typed as `int`, but actually `tuple(int)`
             "fit": True,  # Whether to apply tight crop around text
             "output_mask": False,  # Whether to return masks for text.
@@ -168,6 +174,15 @@ class TRDGRecognition(SizedDataset):
         pil_image = FakeTextDataGenerator.generate(**gen_args)
         pil_image = to_grayscale(pil_image)
         image = pil_to_tensor(pil_image)
+
+        # Make a fraction of generations light text on dark backgrounds.
+        # This must be applied before pixel values are shifted from [0, 255] to
+        # [-0.5, 0.5].
+        invert_prob = 0.2
+        if torch.rand(()) > (1 - invert_prob):
+            image = invert(image)
+
+        # Shift pixel values from [0, 255] to [-0.5, 0.5]
         image = transform_image(image)
 
         if self.transform:
