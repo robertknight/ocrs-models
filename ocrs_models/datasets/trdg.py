@@ -5,7 +5,12 @@ from typing import Callable, Optional
 
 import torch
 from torch import Tensor
-from torchvision.transforms.functional import invert, pil_to_tensor, to_grayscale
+from torchvision.transforms.functional import (
+    invert,
+    pil_to_tensor,
+    resize,
+    to_grayscale,
+)
 import trdg
 from trdg.data_generator import FakeTextDataGenerator
 from trdg.string_generator import create_strings_from_dict
@@ -228,6 +233,13 @@ class TRDGRecognition(SizedDataset):
             #
             # Clamp to bring these values back into that range.
             image = image.clamp(-0.5, 0.5)
+
+        # Data augmentations may alter the size of the image. Resize back to
+        # `REC_INPUT_HEIGHT`, as all images in a batch need to have the same
+        # height. Widths can vary, the caller will pad images.
+        _chans, height, width = image.shape
+        if height != REC_INPUT_HEIGHT:
+            image = resize(image, [REC_INPUT_HEIGHT, width], antialias=True)
 
         text_seq = encode_text(text, self.alphabet, unknown_char="?")
         sample: TextRecSample = {
