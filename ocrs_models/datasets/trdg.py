@@ -1,6 +1,7 @@
 import importlib
 import os.path
 import random
+import sys
 from typing import Callable, Optional
 
 import torch
@@ -67,16 +68,18 @@ def gen_random_strings(alphabet: str, count: int, max_words: int) -> list[str]:
     :param max_words: Max words per string
     """
     max_word_len = 10
-    strings = []
+    strings: list[str] = []
+    alphabet_chars = [ch for ch in alphabet if not ch.isspace()]
+
     for _ in range(count):
         n_words = random.randint(1, max_words)
-        words = []
+        words: list[str] = []
         for _ in range(n_words):
             word_len = random.randint(1, max_word_len)
             word = ""
             for _ in range(word_len):
-                char_idx = random.randrange(len(alphabet))
-                word += alphabet[char_idx]
+                char_idx = random.randrange(len(alphabet_chars))
+                word += alphabet_chars[char_idx]
             words.append(word)
         strings.append(" ".join(words))
     return strings
@@ -212,6 +215,10 @@ class TRDGRecognition(SizedDataset):
             "image_dir": None,
         }
         pil_image = FakeTextDataGenerator.generate(**gen_args)
+
+        if not pil_image:
+            print("Failed to generate image with args", gen_args, file=sys.stderr)
+
         pil_image = to_grayscale(pil_image)
         image = pil_to_tensor(pil_image)
 
