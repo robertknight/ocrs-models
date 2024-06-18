@@ -15,7 +15,7 @@ opencv-python = "^4.9.0.80"
 shapely = "^2.0.2"
 wandb = "^0.16.2"
 pylev = "^1.4.0"
-onnx = "^1.15.0"
+onnx = "^1.16.0"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.8.0"
