@@ -28,6 +28,13 @@ You can mix and match default/pre-trained and custom models for the different
 stages. For example you may wish to use a pre-trained detection model but a
 custom recognition model.
 
+## Clone the repository
+
+```
+git clone https://github.com/robertknight/ocrs-models.git
+cd ocrs-models
+```
+
 ## Download the dataset
 
 Following the instructions in
