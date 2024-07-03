@@ -34,7 +34,6 @@ custom recognition model.
 git clone https://github.com/robertknight/ocrs-models.git
 cd ocrs-models
 ```
-```
 
 ## Download the dataset
 
