@@ -6,7 +6,7 @@ from typing import Optional, cast
 import torch
 from torchvision.io import ImageReadMode, read_image, write_png
 from torchvision.transforms.functional import resize
-import tqdm
+from tqdm import tqdm
 
 from .util import (
     Polygon,
