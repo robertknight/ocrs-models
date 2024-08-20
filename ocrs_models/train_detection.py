@@ -393,7 +393,7 @@ def main():
             raise Exception("ONNX export requires a checkpoint to load")
 
         test_batch = next(iter(val_dataloader))
-        test_image = test_batch["image"][0:1]
+        test_image = test_batch["image"][0:1].to(device)
 
         torch.onnx.export(
             model,
