@@ -397,7 +397,7 @@ def main():
         test_batch = next(iter(val_dataloader))
         torch.onnx.export(
             model,
-            test_batch["image"],
+            test_batch["image"].to(device),
             args.export,
             input_names=["line_image"],
             output_names=["chars"],
