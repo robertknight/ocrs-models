@@ -135,23 +135,17 @@ poetry run python -m ocrs_models.train_detection hiertext datasets/hiertext/ \
   --export text-detection.onnx
 ```
 
-### Convert the text detection model
+### Use the text detection model
 
-To use the exported ONNX model with Ocrs, you will need to convert it to
-the `.rten` format used by [RTen][rten].
+The exported ONNX model can be used with the `ocrs` Rust crate and `ocrs` CLI.
 
-See the [RTen README](https://github.com/robertknight/rten#getting-started)
-for current instructions on how to do this.
-
-To use the converted model with the `ocrs` CLI tool, you can either pass the
-model path via CLI arguments, or replace the default models in the cache
-directory (`~/.cache/ocrs`). Example using CLI arguments:
+To use the exported model with the CLI, you can either pass the model path via
+CLI arguments, or replace the default models in the cache directory
+(`~/.cache/ocrs`). Example using CLI arguments:
 
 ```sh
-ocrs --detect-model custom-detection-model.rten image.jpg
+ocrs --detect-model text-detection.onnx image.jpg
 ```
-
-[rten]: https://github.com/robertknight/rten
 
 ## Train the text recognition model
 
@@ -183,15 +177,14 @@ poetry run python -m ocrs_models.train_rec hiertext datasets/hiertext/ \
   --export text-recognition.onnx
 ```
 
-### Convert the text recognition model
+### Use the text recognition model
 
-To use the exported ONNX models with Ocrs, convert it to `.rten` format using
-the same process as for the detection model.
+The exported ONNX model can be used with the `ocrs` Rust crate and `ocrs` CLI.
 
-To use the converted model with the `ocrs` CLI tool, you can either pass the
-model path via CLI arguments, or replace the default models in the cache
-directory (`~/.cache/ocrs`). Example using CLI arguments:
+To use the exported model with the CLI, you can either pass the model path via
+CLI arguments, or replace the default models in the cache directory
+(`~/.cache/ocrs`). Example using CLI arguments:
 
 ```sh
-ocrs --rec-model custom-recognition-model.rten image.jpg
+ocrs --rec-model text-recognition.onnx image.jpg
 ```
