@@ -93,6 +93,33 @@ training scripts:
 export WANDB_API_KEY=<your_api_key>
 ```
 
+## Train on a remote GPU host (optional)
+
+If the dataset is on a machine without a suitable GPU, you can train on a
+remote Linux host with an NVIDIA GPU via SSH:
+
+```
+just train-detection-ssh user@host
+just train-recognition-ssh user@host
+```
+
+These commands copy the code and dataset to `~/ocrs-models` on the remote host
+using rsync, train the model and export it to ONNX, then copy the checkpoint
+and ONNX model back to the local repository root. The remote host needs
+passwordless SSH login, rsync and [uv](https://docs.astral.sh/uv/). If
+`WANDB_API_KEY` is set locally, it is forwarded to the remote host.
+
+Extra arguments are passed to the training script, and override the default
+`--max-epochs` and `--batch-size` values given in the sections below. For
+example, to do a quick test run:
+
+```
+just train-detection-ssh user@host --max-epochs 1
+```
+
+Training stops if the SSH connection drops. Training runs can take a long time,
+so you may want to run these commands inside `tmux` or `screen` locally.
+
 ## Train the text detection model
 
 To launch a training run for the text detection model, run:
@@ -163,7 +190,7 @@ ONNX via:
 
 ```
 uv run python -m ocrs_models.train_rec hiertext datasets/hiertext/ \
-  --checkpoint text-rec.pt \
+  --checkpoint text-rec-checkpoint.pt \
   --export text-recognition.onnx
 ```
 
