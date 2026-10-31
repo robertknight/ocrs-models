@@ -392,16 +392,16 @@ def main():
         test_batch = next(iter(val_dataloader))
         test_image = test_batch["image"][0:1].to(device)
 
+        model.eval()
         torch.onnx.export(
             model,
             test_image,
             args.export,
             input_names=["image"],
             output_names=["mask"],
-            dynamic_axes={"image": {0: "batch"}, "mask": {0: "batch"}},
-            # Use the TorchScript-based exporter, which produces the same graphs as
-            # earlier PyTorch versions.
-            dynamo=False,
+            dynamic_shapes={"x": {0: torch.export.Dim("batch")}},
+            # Store weights in the .onnx file rather than a separate .onnx.data file.
+            external_data=False,
         )
         return
 
