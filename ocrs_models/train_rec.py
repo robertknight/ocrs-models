@@ -190,7 +190,8 @@ def test(
             target_lengths = batch["text_len"]
 
             # Predict [seq, batch, class] from [batch, 1, height, width].
-            pred_seq = model(img)
+            with torch.autocast(device_type=device.type, dtype=torch.bfloat16):
+                pred_seq = model(img)
 
             stats.update(text_seq, target_lengths, pred_seq, input_lengths)
 

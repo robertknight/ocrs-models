@@ -173,7 +173,8 @@ def test(
             img = img.to(device)
             masks = masks.to(device)
 
-            pred_masks = model(img)
+            with torch.autocast(device_type=device.type, dtype=torch.bfloat16):
+                pred_masks = model(img).float()
 
             test_loss += loss_fn(pred_masks, masks).item()
 
