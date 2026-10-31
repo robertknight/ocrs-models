@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.14"]
 
     steps:
       - uses: actions/checkout@v7
@@ -22,9 +22,12 @@ jobs:
       - name: Install just
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
       - name: Install dependencies
-        run: |
-          uv sync
-          uv pip install torch torchvision
+        # Use CPU-only PyTorch, which is much smaller than the default CUDA build.
+        run: uv sync --locked --no-group torch --group torch-cpu
       - name: Lint, format and typecheck
+        env:
+          # Prevent `uv run` from re-syncing the environment with the default
+          # PyTorch build.
+          UV_NO_SYNC: 1
         run: |
           just qa

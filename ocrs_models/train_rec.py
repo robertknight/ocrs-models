@@ -405,6 +405,9 @@ def main():
                 "line_image": {0: "batch", 3: "seq"},
                 "chars": {0: "out_seq"},
             },
+            # Use the TorchScript-based exporter, which produces the same graphs as
+            # earlier PyTorch versions.
+            dynamo=False,
         )
         return
 

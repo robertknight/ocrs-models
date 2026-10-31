@@ -9,7 +9,7 @@ format:
     uv run ruff format {{python_srcs}}
 
 lint:
-    uv run ruff {{python_srcs}}
+    uv run ruff check {{python_srcs}}
 
 typecheck:
     uv run mypy {{python_srcs}}

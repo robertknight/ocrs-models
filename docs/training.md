@@ -7,7 +7,7 @@ This document describes how to train models for use with
 
 To train the models you will need:
 
-- Python 3.10 or later
+- Python 3.14 or later. uv will install this automatically if needed.
 - A GPU. The initial training was done on NVidia A10G GPUs with 24 GB RAM, via
   [AWS EC2 G5 instances](https://aws.amazon.com/ec2/instance-types/g5/) (the
   smallest `g5.xlarge` size will work).
@@ -67,27 +67,18 @@ tar -xf test.tgz
 ## Set up the training environment
 
 1. Install [uv](https://docs.astral.sh/uv/)
-2. Install dependencies, except for PyTorch:
+2. Install dependencies:
 
 	 ```
 	 uv sync
 	 ```
 
-3. Install the appropriate version of PyTorch for your system, in the virtualenv
-   created by uv:
+   This installs PyTorch from PyPI. On Linux this is a build for NVIDIA GPUs
+   using CUDA 13. On macOS it is a build which supports Apple GPUs. If you
+   need a different build (eg. for an older CUDA version or AMD GPUs), see
+   https://docs.astral.sh/uv/guides/integration/pytorch/.
 
-   ```
-   uv pip install torch torchvision
-   ```
-
-   See https://pytorch.org/get-started/locally/ for an appropriate pip command
-   depending on your platform and GPU.
-
-   Note that `uv sync` removes packages which are not listed in `pyproject.toml`,
-   so if you run it again later, either repeat this step or use
-   `uv sync --inexact`.
-
-4. Start a dummy training run of text detection training to verify everything is working:
+3. Start a dummy training run of text detection training to verify everything is working:
 
 	 ```
 	 uv run python -m ocrs_models.train_detection hiertext datasets/hiertext/ --max-images 100
