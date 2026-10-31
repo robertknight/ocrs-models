@@ -88,9 +88,12 @@ def train(
 
         start = time.time()
 
-        pred_masks = model(img)
+        with torch.autocast(device_type=device.type, dtype=torch.bfloat16):
+            pred_masks = model(img)
 
-        loss = loss_fn(pred_masks, masks)
+        # Compute the loss outside of autocast, as `F.binary_cross_entropy`
+        # does not support it.
+        loss = loss_fn(pred_masks.float(), masks)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
