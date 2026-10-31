@@ -249,8 +249,6 @@ class RecognitionModel(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        n, c, h, w = x.shape
-
         x = self.conv(x)
 
         # Reshape from NCHW to WNCH

@@ -1,18 +1,18 @@
-from argparse import ArgumentParser, BooleanOptionalAction
 import os
 import shutil
 import time
-from typing import Callable, Optional
+from argparse import ArgumentParser, BooleanOptionalAction
+from collections.abc import Callable
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+import wandb
+from torch import nn
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
+from torchvision import transforms
 from torchvision.transforms.functional import to_pil_image
-import torchvision.transforms as transforms
 from tqdm import tqdm
-import wandb
 
 from .datasets.hiertext import HierText
 from .models import DetectionModel
@@ -38,7 +38,7 @@ def save_img_and_predicted_mask(
     img_filename: str,
     img: torch.Tensor,
     pred_masks: list[torch.Tensor],
-    target_masks: Optional[list[torch.Tensor]] = None,
+    target_masks: list[torch.Tensor] | None = None,
 ):
     # Datasets yield images with values in [-0.5, 0.5]. Convert these to [0, 1]
     # as required by `to_pil_image`.
@@ -132,7 +132,7 @@ def get_metric_means(metrics_dicts: list[dict[str, float]]) -> dict[str, float]:
     if not len(metrics_dicts):
         return {}
 
-    keys = set(k for md in metrics_dicts for k in md.keys())
+    keys = {k for md in metrics_dicts for k in md}
     return {k: mean([md.get(k, 0.0) for md in metrics_dicts]) for k in keys}
 
 
@@ -325,7 +325,7 @@ def main():
     if args.dataset_type == "hiertext":
         load_dataset = HierText
     else:
-        raise Exception(f"Unknown dataset type {args.dataset_type}")
+        raise ValueError(f"Unknown dataset type {args.dataset_type}")
 
     batch_size = args.batch_size
     max_images = args.max_images
@@ -387,7 +387,7 @@ def main():
 
     if args.export:
         if not args.checkpoint:
-            raise Exception("ONNX export requires a checkpoint to load")
+            raise ValueError("ONNX export requires a checkpoint to load")
 
         test_batch = next(iter(val_dataloader))
         test_image = test_batch["image"][0:1].to(device)

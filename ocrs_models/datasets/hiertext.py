@@ -1,7 +1,7 @@
-import json
 import gzip
+import json
 import os
-from typing import Optional, cast
+from typing import cast
 
 import torch
 from torchvision.io import ImageReadMode, read_image, write_png
@@ -44,10 +44,10 @@ class HierText(SizedDataset):
             annotations_file = f"{root_dir}/gt/validation.jsonl.gz"
 
         if not os.path.exists(self._img_dir):
-            raise Exception(f'Image directory "{self._img_dir}" not found')
+            raise FileNotFoundError(f'Image directory "{self._img_dir}" not found')
 
         if not os.path.exists(annotations_file):
-            raise Exception(f'Label data file "{annotations_file}" not found')
+            raise FileNotFoundError(f'Label data file "{annotations_file}" not found')
 
         lines_file = annotations_file.replace(".jsonl.gz", ".jsonl")
         self._generate_json_lines_annotations(annotations_file, lines_file)
@@ -159,7 +159,7 @@ class HierTextRecognition(SizedDataset):
         train=True,
         transform=None,
         max_images=None,
-        alphabet: Optional[list[str]] = None,
+        alphabet: list[str] | None = None,
         output_height: int = 64,
     ):
         super().__init__()
@@ -178,10 +178,10 @@ class HierTextRecognition(SizedDataset):
             annotations_file = f"{root_dir}/gt/validation.jsonl.gz"
 
         if not os.path.exists(self._img_dir):
-            raise Exception(f'Image directory "{self._img_dir}" not found')
+            raise FileNotFoundError(f'Image directory "{self._img_dir}" not found')
 
         if not os.path.exists(annotations_file):
-            raise Exception(f'Label data file "{annotations_file}" not found')
+            raise FileNotFoundError(f'Label data file "{annotations_file}" not found')
 
         lines_file = annotations_file.replace(".jsonl.gz", "-lines.jsonl")
         self._generate_text_line_annotations(annotations_file, lines_file)

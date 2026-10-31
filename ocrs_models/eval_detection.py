@@ -1,13 +1,13 @@
-from argparse import ArgumentParser
-import time
 import sys
+import time
+from argparse import ArgumentParser
 
 import torch
 from torchvision.io import ImageReadMode, read_image
 from torchvision.transforms.functional import InterpolationMode, resize, to_pil_image
 
-from .models import DetectionModel
 from .datasets.util import SHRINK_DISTANCE
+from .models import DetectionModel
 from .postprocess import draw_quads, expand_quads, extract_cc_quads
 from .train_detection import mask_size
 

@@ -1,11 +1,10 @@
 import cv2
 import numpy as np
-from PIL import Image, ImageDraw
 import torch
-from torchvision.transforms.functional import to_pil_image
-
+from PIL import Image, ImageDraw
 from shapely.geometry import JOIN_STYLE
 from shapely.geometry.polygon import LinearRing, Polygon
+from torchvision.transforms.functional import to_pil_image
 
 
 def extract_cc_quads(mask: torch.Tensor) -> torch.Tensor:
