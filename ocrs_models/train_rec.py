@@ -417,6 +417,8 @@ def main():
         )
         return
 
+    model.compile()
+
     # Enable experiment tracking via Weights and Biases if API key set.
     enable_wandb = bool(os.environ.get("WANDB_API_KEY"))
     if enable_wandb:
