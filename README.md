@@ -24,8 +24,8 @@ The models are trained exclusively on datasets which are a) open and b) have non
 ## Pre-trained models
 
 Pre-trained models are available from [Hugging
-Face](https://huggingface.co/robertknight/ocrs) as PyTorch checkpoints,
-[ONNX](https://onnx.ai) and [RTen](https://github.com/robertknight/rten) models.
+Face](https://huggingface.co/robertknight/ocrs) as PyTorch checkpoints and
+[ONNX](https://onnx.ai) models.
 
 ## Training custom models
 
