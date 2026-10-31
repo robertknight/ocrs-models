@@ -14,7 +14,6 @@ import torchvision.transforms as transforms
 from tqdm import tqdm
 import wandb
 
-from .datasets.ddi100 import DDI100
 from .datasets.hiertext import HierText
 from .models import DetectionModel
 from .postprocess import box_match_metrics, extract_cc_quads
@@ -293,7 +292,7 @@ def prepare_transform(mask_size: tuple[int, int], augment) -> nn.Module:
 def main():
     parser = ArgumentParser(description="Train text detection model.")
     parser.add_argument(
-        "dataset_type", type=str, choices=["ddi", "hiertext"], help="Format of dataset"
+        "dataset_type", type=str, choices=["hiertext"], help="Format of dataset"
     )
     parser.add_argument("data_dir")
     parser.add_argument("--batch-size", type=int, default=4, help="Batch size")
@@ -323,9 +322,7 @@ def main():
     )
     args = parser.parse_args()
 
-    if args.dataset_type == "ddi":
-        load_dataset = DDI100
-    elif args.dataset_type == "hiertext":
+    if args.dataset_type == "hiertext":
         load_dataset = HierText
     else:
         raise Exception(f"Unknown dataset type {args.dataset_type}")
