@@ -265,6 +265,9 @@ def main():
                 "preds": {0: "box"},
             },
             opset_version=16,
+            # Use the TorchScript-based exporter, which produces the same graphs as
+            # earlier PyTorch versions.
+            dynamo=False,
         )
         return
 

@@ -5,21 +5,46 @@ description = "PyTorch models for the Ocrs OCR engine"
 authors = [{ name = "Robert Knight", email = "robertknight@gmail.com" }]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.14"
 dependencies = [
-    "numpy>=1.26.3,<2",
-    "pillow>=10.3.0,<11",
-    "tqdm>=4.66.1,<5",
-    "opencv-python>=4.9.0.80,<5",
-    "shapely>=2.0.2,<3",
-    "wandb>=0.16.2,<0.17",
+    "numpy>=2.5.4,<3",
+    "pillow>=13.0.0,<14",
+    "tqdm>=4.70.1,<5",
+    "opencv-python>=5.0.0.93,<6",
+    "shapely>=2.2.0,<3",
+    "wandb>=0.31.0,<0.32",
     "pylev>=1.4.0,<2",
-    "onnx>=1.16.0,<2",
+    "onnx>=1.23.2,<2",
 ]
 
 [dependency-groups]
 dev = [
-    "mypy>=1.8.0,<2",
-    "types-Pillow>=10.2.0.20240125,<11",
-    "ruff>=0.2.1,<0.3",
+    "mypy>=2.4.1,<3",
+    "ruff>=0.17.3,<0.18",
 ]
+# PyTorch from PyPI. This uses CUDA on Linux and supports Apple GPUs on macOS.
+torch = [
+    "torch>=2.15.0,<3",
+    "torchvision>=0.29.2,<0.30",
+]
+# CPU-only PyTorch. This is much smaller and is used in CI.
+torch-cpu = [
+    "torch>=2.15.0,<3",
+    "torchvision>=0.29.2,<0.30",
+]
+
+[tool.uv]
+default-groups = ["dev", "torch"]
+conflicts = [[{ group = "torch" }, { group = "torch-cpu" }]]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", group = "torch-cpu" }]
+torchvision = [{ index = "pytorch-cpu", group = "torch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

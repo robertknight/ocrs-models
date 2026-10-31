@@ -71,7 +71,7 @@ match args.dataset_type:
             # This loop doesn't use `enumerate` due to mypy error.
             item = dataset[i]
 
-            print(f"Processing image {i+1}...")
+            print(f"Processing image {i + 1}...")
 
             img = item["image"]
             mask = item["text_mask"]

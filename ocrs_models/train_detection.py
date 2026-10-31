@@ -402,6 +402,9 @@ def main():
             input_names=["image"],
             output_names=["mask"],
             dynamic_axes={"image": {0: "batch"}, "mask": {0: "batch"}},
+            # Use the TorchScript-based exporter, which produces the same graphs as
+            # earlier PyTorch versions.
+            dynamo=False,
         )
         return
 
