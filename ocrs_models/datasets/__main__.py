@@ -1,12 +1,10 @@
 from argparse import ArgumentParser, BooleanOptionalAction
-from typing import Callable, cast
 import os
 
 from torchvision.io import write_png
 from torchvision.utils import draw_segmentation_masks
 
 from . import text_recognition_data_augmentations
-from .ddi100 import DDI100
 from .hiertext import HierText, HierTextRecognition
 from .util import SizedDataset, untransform_image, decode_text
 
@@ -20,7 +18,7 @@ running this command.
 )
 parser.add_argument(
     "dataset_type",
-    choices=["ddi", "hiertext", "hiertext-rec"],
+    choices=["hiertext", "hiertext-rec"],
     help="Dataset to load",
 )
 parser.add_argument("root_dir", help="Root directory of dataset")
@@ -52,15 +50,8 @@ def filter_item(path: str) -> bool:
 
 dataset: SizedDataset
 match args.dataset_type:
-    case "ddi" | "hiertext":
-        # Explicitly cast dataset constructors to a common type to avoid mypy error.
-        DatasetConstructor = Callable[..., SizedDataset]
-        if args.dataset_type == "ddi":
-            load_dataset = cast(DatasetConstructor, DDI100)
-        else:
-            load_dataset = cast(DatasetConstructor, HierText)
-
-        dataset = load_dataset(
+    case "hiertext":
+        dataset = HierText(
             args.root_dir,
             train=args.subset == "train",
             max_images=args.max_images,
