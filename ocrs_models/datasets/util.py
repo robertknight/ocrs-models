@@ -1,17 +1,15 @@
 from collections.abc import Sized
 
 import numpy as np
-from PIL import Image, ImageDraw
-from shapely.geometry import MultiLineString, JOIN_STYLE
-from shapely.geometry.polygon import LinearRing
 import torch
+from PIL import Image, ImageDraw
+from shapely.geometry import JOIN_STYLE, MultiLineString
+from shapely.geometry.polygon import LinearRing
 from torch.utils.data import Dataset
 
 
 class SizedDataset(Dataset, Sized):
     """Dataset with a known size."""
-
-    pass
 
 
 SHRINK_DISTANCE = 3.0

@@ -1,12 +1,12 @@
-from argparse import ArgumentParser, BooleanOptionalAction
 import os
+from argparse import ArgumentParser, BooleanOptionalAction
 
 from torchvision.io import write_png
 from torchvision.utils import draw_segmentation_masks
 
 from . import text_recognition_data_augmentations
 from .hiertext import HierText, HierTextRecognition
-from .util import SizedDataset, untransform_image, decode_text
+from .util import SizedDataset, decode_text, untransform_image
 
 parser = ArgumentParser(
     description="""

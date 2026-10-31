@@ -1,18 +1,18 @@
-from argparse import ArgumentParser, BooleanOptionalAction
 import math
 import os
+from argparse import ArgumentParser, BooleanOptionalAction
 
-from pylev import levenshtein
 import torch
-from torch.nn import CTCLoss
 import torch.nn.functional as F
+import wandb
+from pylev import levenshtein
+from torch.nn import CTCLoss
 from torch.utils.data import DataLoader, default_collate
 from tqdm import tqdm
-import wandb
 
+from .datasets import text_recognition_data_augmentations
 from .datasets.hiertext import DEFAULT_ALPHABET, HierTextRecognition
 from .datasets.util import ctc_greedy_decode_text, decode_text
-from .datasets import text_recognition_data_augmentations
 from .models import RecognitionModel
 from .train_detection import load_checkpoint, save_checkpoint
 
@@ -133,7 +133,7 @@ def train(
                 print(f'Sample train prediction "{pred_text}" target "{target_text}"')
 
         if math.isnan(batch_loss.item()):
-            raise Exception(
+            raise RuntimeError(
                 "Training produced invalid loss. Check input and target lengths are compatible with CTC loss"
             )
 
@@ -338,7 +338,7 @@ def main():
     if args.dataset_type == "hiertext":
         load_dataset = HierTextRecognition
     else:
-        raise Exception(f"Unknown dataset type {args.dataset_type}")
+        raise ValueError(f"Unknown dataset type {args.dataset_type}")
 
     max_images = args.max_images
     if max_images:
