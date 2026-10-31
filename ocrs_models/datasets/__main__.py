@@ -8,8 +8,7 @@ from torchvision.utils import draw_segmentation_masks
 from . import text_recognition_data_augmentations
 from .ddi100 import DDI100
 from .hiertext import HierText, HierTextRecognition
-from .util import SizedDataset, untransform_image, decode_text, draw_word_boxes
-from .web_layout import WebLayout
+from .util import SizedDataset, untransform_image, decode_text
 
 parser = ArgumentParser(
     description="""
@@ -21,7 +20,7 @@ running this command.
 )
 parser.add_argument(
     "dataset_type",
-    choices=["ddi", "hiertext", "hiertext-rec", "web-layout"],
+    choices=["ddi", "hiertext", "hiertext-rec"],
     help="Dataset to load",
 )
 parser.add_argument("root_dir", help="Root directory of dataset")
@@ -109,18 +108,3 @@ match args.dataset_type:
             line_img_path = f"{args.out_dir}/line-{i}-{image_id}-{text_path_safe}.png"
 
             write_png(untransform_image(img), line_img_path)
-    case "web-layout":
-        dataset = WebLayout(
-            args.root_dir,
-            train=args.subset == "train",
-            max_images=args.max_images,
-            filter=filter_item,
-            randomize=args.augment,
-        )
-
-        for i in range(len(dataset)):
-            word_boxes, labels = dataset[i]
-            out_img = f"{args.out_dir}/img-{i}.png"
-            width = 1024
-            height = 768
-            draw_word_boxes(out_img, width, height, word_boxes, labels)
