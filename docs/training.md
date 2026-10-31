@@ -15,18 +15,13 @@ To train the models you will need:
 
 ## About Ocrs models
 
-Ocrs splits the OCR process into three stages:
+Ocrs uses two PyTorch models, which can be trained using this repository:
 
  1. Text detection
- 2. Layout analysis
- 3. Text recognition
+ 2. Text recognition
 
-Each of these stages corresponds to a separate PyTorch model. The layout
-analysis model is incomplete and is not currently used in Ocrs.
-
-You can mix and match default/pre-trained and custom models for the different
-stages. For example you may wish to use a pre-trained detection model but a
-custom recognition model.
+You can mix and match default/pre-trained and custom models. For example you
+may wish to use a pre-trained detection model but a custom recognition model.
 
 ## Clone the repository
 
