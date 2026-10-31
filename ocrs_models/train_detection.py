@@ -88,9 +88,12 @@ def train(
 
         start = time.time()
 
-        pred_masks = model(img)
+        with torch.autocast(device_type=device.type, dtype=torch.bfloat16):
+            pred_masks = model(img)
 
-        loss = loss_fn(pred_masks, masks)
+        # Compute the loss outside of autocast, as `F.binary_cross_entropy`
+        # does not support it.
+        loss = loss_fn(pred_masks.float(), masks)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -170,7 +173,8 @@ def test(
             img = img.to(device)
             masks = masks.to(device)
 
-            pred_masks = model(img)
+            with torch.autocast(device_type=device.type, dtype=torch.bfloat16):
+                pred_masks = model(img).float()
 
             test_loss += loss_fn(pred_masks, masks).item()
 
@@ -422,6 +426,8 @@ def main():
         print(f"Validation loss {val_loss:.4f}")
         print("Validation metrics:", format_metrics(val_metrics))
         return
+
+    model.compile()
 
     # Enable experiment tracking via Weights and Biases if API key set.
     enable_wandb = bool(os.environ.get("WANDB_API_KEY"))
