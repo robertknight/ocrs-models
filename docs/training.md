@@ -66,27 +66,31 @@ tar -xf test.tgz
 
 ## Set up the training environment
 
-1. Install [Poetry](https://python-poetry.org)
+1. Install [uv](https://docs.astral.sh/uv/)
 2. Install dependencies, except for PyTorch:
 
 	 ```
-	 poetry install
+	 uv sync
 	 ```
 
 3. Install the appropriate version of PyTorch for your system, in the virtualenv
-   created by Poetry:
+   created by uv:
 
    ```
-   poetry run pip install torch torchvision
+   uv pip install torch torchvision
    ```
 
    See https://pytorch.org/get-started/locally/ for an appropriate pip command
    depending on your platform and GPU.
 
+   Note that `uv sync` removes packages which are not listed in `pyproject.toml`,
+   so if you run it again later, either repeat this step or use
+   `uv sync --inexact`.
+
 4. Start a dummy training run of text detection training to verify everything is working:
 
 	 ```
-	 poetry run python -m ocrs_models.train_detection hiertext datasets/hiertext/ --max-images 100
+	 uv run python -m ocrs_models.train_detection hiertext datasets/hiertext/ --max-images 100
 	 ```
 	
    Wait for one successful epoch of training and validation to complete and then
@@ -108,7 +112,7 @@ export WANDB_API_KEY=<your_api_key>
 To launch a training run for the text detection model, run:
 
 ```
-poetry run python -m ocrs_models.train_detection hiertext datasets/hiertext/ \
+uv run python -m ocrs_models.train_detection hiertext datasets/hiertext/ \
   --max-epochs 50 \
   --batch-size 28
 ```
@@ -130,7 +134,7 @@ As training progresses, the latest checkpoint will be saved to
 model to ONNX via:
 
 ```
-poetry run python -m ocrs_models.train_detection hiertext datasets/hiertext/ \
+uv run python -m ocrs_models.train_detection hiertext datasets/hiertext/ \
   --checkpoint text-detection-checkpoint.pt \
   --export text-detection.onnx
 ```
@@ -152,7 +156,7 @@ ocrs --detect-model text-detection.onnx image.jpg
 To launch a training run for the text recognition model, run:
 
 ```
-poetry run python -m ocrs_models.train_rec hiertext datasets/hiertext/ \
+uv run python -m ocrs_models.train_rec hiertext datasets/hiertext/ \
   --max-epochs 50 \
   --batch-size 250
 ```
@@ -172,7 +176,7 @@ As training progresses, the latest checkpoint will be saved to
 ONNX via:
 
 ```
-poetry run python -m ocrs_models.train_rec hiertext datasets/hiertext/ \
+uv run python -m ocrs_models.train_rec hiertext datasets/hiertext/ \
   --checkpoint text-rec.pt \
   --export text-recognition.onnx
 ```

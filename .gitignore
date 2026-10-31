@@ -5,3 +5,5 @@ __pycache__/
 
 /datasets
 /wandb
+
+.venv/
