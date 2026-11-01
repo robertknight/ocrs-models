@@ -1,3 +1,4 @@
+import math
 import os
 import shutil
 import time
@@ -66,6 +67,32 @@ def save_img_and_predicted_mask(
 
 LossFunc = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 
+LRSchedule = Callable[[float], float]
+"""Function that returns the learning rate for a given (fractional) epoch."""
+
+
+def cosine_lr_schedule(
+    max_lr: float, total_epochs: int, warmup_frac: float = 0.03
+) -> LRSchedule:
+    """
+    Create a learning rate schedule with linear warmup and cosine decay.
+
+    The learning rate increases linearly from 0 to `max_lr` over the first
+    `warmup_frac` of training, or the first epoch if that is longer, then
+    decays to 0 over the remainder following a cosine curve.
+    """
+    # A short warmup can make training collapse to predicting a constant
+    # output, so warm up for at least one epoch.
+    warmup_epochs = min(max(total_epochs * warmup_frac, 1.0), total_epochs / 2)
+
+    def lr_at(epoch: float) -> float:
+        if epoch < warmup_epochs:
+            return max_lr * epoch / warmup_epochs
+        progress = min(1.0, (epoch - warmup_epochs) / (total_epochs - warmup_epochs))
+        return max_lr * 0.5 * (1 + math.cos(math.pi * progress))
+
+    return lr_at
+
 
 def train(
     epoch: int,
@@ -74,6 +101,7 @@ def train(
     model: DetectionModel,
     loss_fn: LossFunc,
     optimizer: torch.optim.Optimizer,
+    lr_schedule: LRSchedule | None = None,
     save_debug_images=False,
 ):
     model.train()
@@ -84,6 +112,11 @@ def train(
     train_loss = 0.0
 
     for batch_idx, batch in enumerate(train_iterable):
+        if lr_schedule:
+            lr = lr_schedule(epoch + batch_idx / len(dataloader))
+            for group in optimizer.param_groups:
+                group["lr"] = lr
+
         img_fname = batch["path"]
         img = batch["image"]
         masks = batch["text_mask"]
@@ -286,6 +319,12 @@ def main():
     )
     parser.add_argument("--export", type=str, help="Export model to ONNX format")
     parser.add_argument(
+        "--lr",
+        type=float,
+        default=3e-3,
+        help="Peak learning rate. If --max-epochs is set, the learning rate follows a cosine schedule which reaches this peak after a short warmup.",
+    )
+    parser.add_argument(
         "--max-epochs", type=int, help="Maximum number of epochs to train for"
     )
     parser.add_argument(
@@ -365,7 +404,11 @@ def main():
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = DetectionModel().to(device)
 
-    optimizer = torch.optim.Adam(model.parameters())
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    if args.max_epochs:
+        lr_schedule = cosine_lr_schedule(args.lr, args.max_epochs)
+    else:
+        lr_schedule = None
 
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model param count: {total_params}")
@@ -440,6 +483,7 @@ def main():
             model,
             balanced_cross_entropy_loss,
             optimizer,
+            lr_schedule=lr_schedule,
             save_debug_images=args.debug_images,
         )
         val_loss, val_metrics = test(

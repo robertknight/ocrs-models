@@ -126,16 +126,22 @@ To launch a training run for the text detection model, run:
 
 ```
 uv run python -m ocrs_models.train_detection hiertext datasets/hiertext/ \
-  --max-epochs 50 \
+  --max-epochs 80 \
   --batch-size 28
 ```
+
+On an NVIDIA DGX Spark, this takes roughly 2 hours, including validation after
+each epoch.
+
+The learning rate follows a cosine schedule over the number of epochs given by
+`--max-epochs`, after a short warmup. The peak learning rate can be changed
+with `--lr`. If `--max-epochs` is not set, the learning rate stays constant.
 
 The `--batch-size` flag will need to be varied according to the amount of GPU
 memory you have available. One way to do this is to start with a small value,
 and then increase it until the training process is using most of the available
-GPU memory. The above value was used with a GPU that has 24 GB of memory. When
-training with an NVidia GPU, you can use the `nvidia-smi` tool to get memory
-usage statistics.
+GPU memory. When training with an NVidia GPU, you can use the `nvidia-smi` tool
+to get memory usage statistics.
 
 Data loading and augmentation is CPU-intensive and uses up to 16 worker
 processes. On machines with few CPU cores, data loading may limit training

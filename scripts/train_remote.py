@@ -29,7 +29,7 @@ MODELS = {
         "module": "ocrs_models.train_detection",
         "checkpoint": "text-detection-checkpoint.pt",
         "onnx": "text-detection.onnx",
-        "default_args": ["--max-epochs", "50", "--batch-size", "28"],
+        "default_args": ["--max-epochs", "80", "--batch-size", "28"],
     },
     "recognition": {
         "module": "ocrs_models.train_rec",
