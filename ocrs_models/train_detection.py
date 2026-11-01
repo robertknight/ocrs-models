@@ -29,7 +29,13 @@ dataset, which consists of scanned A4 pages.
 
 
 def binarize_mask(mask: torch.Tensor, threshold: float = 0.5) -> torch.Tensor:
-    return torch.where(mask > threshold, 1.0, 0.0)
+    """
+    Convert a mask of probabilities into a uint8 mask of 0s and 1s.
+
+    This returns a uint8 rather than float mask because copying the result to
+    the CPU during validation was much slower for float masks.
+    """
+    return (mask > threshold).to(torch.uint8)
 
 
 def save_img_and_predicted_mask(
