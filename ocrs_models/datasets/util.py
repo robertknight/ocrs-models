@@ -72,22 +72,22 @@ def shrink_polygon(poly: Polygon, dist: float) -> Polygon:
     return list(shrunk_line.coords)
 
 
-def generate_mask(
+def generate_mask_u8(
     width: int, height: int, polys: list[Polygon], shrink_dist: float = SHRINK_DISTANCE
 ) -> torch.Tensor:
     """
-    Generate a mask in CHW format from polygons of words or lines.
+    Generate a mask from polygons of words or lines.
 
-    Returns a binary mask indicating text regions in the image. The text regions
-    are shrunk by `shrink_dist` along each edge to create more space between
-    adjacent regions.
+    Returns a `[height, width]` uint8 mask where text regions have value 255
+    and other pixels have value 0. The text regions are shrunk by `shrink_dist`
+    along each edge to create more space between adjacent regions.
 
     :param width: Width of output image
     :param height: Height of output image
     :param polys: List of polygons to draw on the mask.
     """
 
-    mask_img = Image.new("1", (width, height), 0)
+    mask_img = Image.new("L", (width, height), 0)
     draw = ImageDraw.Draw(mask_img)
 
     for poly in polys:
@@ -97,14 +97,20 @@ def generate_mask(
             shrunk_poly = poly
         if not shrunk_poly:
             continue
-        draw.polygon(shrunk_poly, fill="white", outline=None)
+        draw.polygon(shrunk_poly, fill=255, outline=None)
 
-    # Use numpy to convert the mask from bool -> float rather than PyTorch to
-    # work around https://github.com/pytorch/pytorch/issues/54789. This caused
-    # True values to be mapped to 255.0 instead of 1.0 on Linux (but not macOS).
-    mask = np.array(mask_img, dtype=np.float32)
+    return torch.from_numpy(np.array(mask_img))
 
-    return torch.Tensor(mask)
+
+def generate_mask(
+    width: int, height: int, polys: list[Polygon], shrink_dist: float = SHRINK_DISTANCE
+) -> torch.Tensor:
+    """
+    Generate a binary float mask from polygons of words or lines.
+
+    Like `generate_mask_u8`, but returns a float mask with values 0.0 and 1.0.
+    """
+    return generate_mask_u8(width, height, polys, shrink_dist).float() / 255.0
 
 
 def encode_text(text: str, alphabet: list[str], unknown_char: str) -> torch.Tensor:

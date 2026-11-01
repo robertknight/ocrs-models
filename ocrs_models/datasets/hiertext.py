@@ -1,9 +1,11 @@
 import gzip
 import json
 import os
+import random
 from typing import cast
 
 import torch
+from torchvision import transforms
 from torchvision.io import ImageReadMode, read_image, write_png
 from torchvision.transforms.functional import resize
 from tqdm import tqdm
@@ -15,6 +17,7 @@ from .util import (
     clamp,
     encode_text,
     generate_mask,
+    generate_mask_u8,
     transform_image,
 )
 
@@ -35,7 +38,23 @@ class HierText(SizedDataset):
     [1] https://storage.googleapis.com/openimages/web/index.html
     """
 
-    def __init__(self, root_dir: str, train=True, transform=None, max_images=None):
+    def __init__(
+        self,
+        root_dir: str,
+        train=True,
+        max_images=None,
+        size: tuple[int, int] | None = None,
+        augment=False,
+    ):
+        """
+        :param size: (height, width) to resize images and masks to. If `None`,
+            items are returned at their original size.
+        :param augment: Whether to apply randomized data augmentation. Requires
+            `size` to be set.
+        """
+        if augment and size is None:
+            raise ValueError("Data augmentation requires `size` to be set")
+
         if train:
             self._img_dir = f"{root_dir}/train"
             annotations_file = f"{root_dir}/gt/train.jsonl.gz"
@@ -58,14 +77,62 @@ class HierText(SizedDataset):
         if max_images:
             self._annotations = self._annotations[:max_images]
 
-        self.transform = transform
+        self.size = size
+        self.augment = augment
+        self._augmentations = [
+            transforms.ColorJitter(brightness=0.1, contrast=0.1),
+            transforms.RandomAffine(degrees=5, scale=(0.8, 1.2), shear=5),
+            transforms.RandomPerspective(distortion_scale=0.1, p=1.0),
+        ]
 
     def __len__(self):
         return len(self._annotations)
 
+    def _augment(
+        self, img: torch.Tensor, mask: torch.Tensor, orig_height: int, orig_width: int
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Apply a randomized augmentation to an image and its mask.
+
+        Half of images get one augmentation, which is applied to both the image
+        and mask.
+
+        :param img: CHW image, resized to `self.size`
+        :param mask: CHW mask, resized to `self.size`
+        :param orig_height: Height of the image before resizing
+        :param orig_width: Width of the image before resizing
+        """
+        assert self.size is not None
+
+        if random.random() < 0.5:
+            choice = random.randrange(len(self._augmentations) + 1)
+            if choice < len(self._augmentations):
+                # Transform image and mask in one call so that both use the
+                # same randomized parameters.
+                transformed = self._augmentations[choice](torch.stack([img, mask]))
+                img, mask = transformed[0], transformed[1]
+            else:
+                # Crop a 600x600 region of the original image, scaled to the
+                # resized image's coordinates, then resize back to `self.size`.
+                height, width = self.size
+                crop_size = 600
+                crop = transforms.RandomCrop(
+                    size=(
+                        min(round(crop_size * height / orig_height), 2 * height),
+                        min(round(crop_size * width / orig_width), 2 * width),
+                    ),
+                    pad_if_needed=True,
+                )
+                cropped = resize(
+                    crop(torch.stack([img, mask])), list(self.size), antialias=False
+                )
+                img, mask = cropped[0], cropped[1]
+
+        return img, mask
+
     def __getitem__(self, idx: int):
         """
-        Return tuple of (document image, binary_mask) tensors.
+        Return dict containing document image and binary text mask tensors.
 
         The document image is a CHW tensor with one greyscale color channel.
         The binary mask is a CHW tensor.
@@ -85,18 +152,22 @@ class HierText(SizedDataset):
                     poly = [tuple(coord) for coord in word["vertices"]]
                     word_polys.append(cast(Polygon, poly))
 
-        img = transform_image(read_image(img_path, ImageReadMode.GRAY))
-        _, height, width = img.shape
+        img_u8 = read_image(img_path, ImageReadMode.GRAY)
+        _, height, width = img_u8.shape
 
-        mask = generate_mask(width, height, word_polys)
-        mask = torch.unsqueeze(mask, 0)  # Add channel dimension
+        mask_u8 = generate_mask_u8(width, height, word_polys)
+        mask_u8 = torch.unsqueeze(mask_u8, 0)  # Add channel dimension
 
-        if self.transform:
-            # Input and target are transformed in one call to ensure same
-            # parameters are used for both, if transform is randomized.
-            transformed = self.transform(torch.stack([img, mask]))
-            img = transformed[0]
-            mask = transformed[1]
+        # Resize before converting to float and augmenting, as doing those at
+        # the original resolution is much slower.
+        img_and_mask = torch.cat([img_u8, mask_u8])
+        if self.size is not None:
+            img_and_mask = resize(img_and_mask, list(self.size), antialias=False)
+        img = transform_image(img_and_mask[0:1])
+        mask = img_and_mask[1:2].float() / 255.0
+
+        if self.augment:
+            img, mask = self._augment(img, mask, height, width)
 
         return {
             "path": img_path,

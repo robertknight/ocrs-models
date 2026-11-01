@@ -10,7 +10,6 @@ import wandb
 from torch import nn
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
-from torchvision import transforms
 from torchvision.transforms.functional import to_pil_image
 from tqdm import tqdm
 
@@ -266,33 +265,6 @@ def balanced_cross_entropy_loss(
     return torch.cat([pos_topk_vals, neg_topk_vals]).mean()
 
 
-def prepare_transform(mask_size: tuple[int, int], augment) -> nn.Module:
-    """
-    Prepare image transforms to be applied to input images and text masks.
-
-    :param mask_size: HxW output image size
-    :param augment: Whether to apply randomized data augmentation
-    """
-    resize_transform = transforms.Resize(mask_size, antialias=False)
-    if not augment:
-        return resize_transform
-
-    augmentations = transforms.RandomApply(
-        [
-            transforms.RandomChoice(
-                [
-                    transforms.ColorJitter(brightness=0.1, contrast=0.1),
-                    transforms.RandomAffine(degrees=5, scale=(0.8, 1.2), shear=5),
-                    transforms.RandomPerspective(distortion_scale=0.1, p=1.0),
-                    transforms.RandomCrop(size=600, pad_if_needed=True),
-                ]
-            )
-        ],
-        p=0.5,
-    )
-    return transforms.Compose([augmentations, resize_transform])
-
-
 def main():
     parser = ArgumentParser(description="Train text detection model.")
     parser.add_argument(
@@ -346,10 +318,12 @@ def main():
     # Data loading and augmentation is CPU-intensive, so use multiple workers.
     num_workers = min(16, os.cpu_count() or 1)
 
-    transform = prepare_transform(mask_size, augment=args.augment)
-
     train_dataset = load_dataset(
-        args.data_dir, transform=transform, train=True, max_images=max_images
+        args.data_dir,
+        train=True,
+        max_images=max_images,
+        size=mask_size,
+        augment=args.augment,
     )
     train_dataloader = DataLoader(
         train_dataset,
@@ -367,9 +341,9 @@ def main():
     # comparable across epochs.
     val_dataset = load_dataset(
         args.data_dir,
-        transform=prepare_transform(mask_size, augment=False),
         train=False,
         max_images=validation_max_images,
+        size=mask_size,
     )
     val_dataloader = DataLoader(
         val_dataset, batch_size=batch_size, pin_memory=True, num_workers=num_workers
