@@ -359,9 +359,11 @@ def main():
         drop_last=True,
     )
 
+    # Validation data is not augmented, so that validation losses are
+    # comparable across epochs.
     val_dataset = load_dataset(
         args.data_dir,
-        transform=transform,
+        transform=prepare_transform(mask_size, augment=False),
         train=False,
         max_images=validation_max_images,
     )
