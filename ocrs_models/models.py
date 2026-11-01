@@ -95,22 +95,43 @@ class DetectionModel(nn.Module):
     This uses a U-Net-like architecture. See https://arxiv.org/abs/1505.04597.
 
     It expects a greyscale image as input and outputs a text/not-text
-    segmentation mask.
+    segmentation mask of the same size.
+
+    The input is first downsampled by `stem_factor` using a strided convolution,
+    and the U-Net operates at that reduced resolution. The output is upsampled
+    back to the input resolution using a transposed convolution, which
+    predicts a `stem_factor x stem_factor` patch of the mask for each position.
+    Avoiding full-resolution feature maps makes the model much faster to train
+    and run than a U-Net which operates at the input resolution.
     """
 
     def __init__(self):
         super().__init__()
 
-        # Number of feature channels at each size level in the network.
+        stem_factor = 4
+
+        # Number of feature channels at each size level in the network,
+        # starting at 1/stem_factor of the input resolution.
         #
         # The U-Net paper uses 64 for the first level. This model uses a
         # reduced scale to cut down the parameter count.
         #
         # depth_scale = [64, 128, 256, 512, 1024]
-        depth_scale = [8, 16, 32, 32, 64, 128, 256]
+        depth_scale = [64, 64, 128, 128, 256]
         self.depth_scale = depth_scale
 
-        self.in_conv = DoubleConv(1, depth_scale[0])
+        self.stem = nn.Sequential(
+            nn.Conv2d(
+                1,
+                depth_scale[0],
+                kernel_size=stem_factor,
+                stride=stem_factor,
+                bias=False,
+            ),
+            nn.BatchNorm2d(depth_scale[0]),
+            nn.ReLU(),
+        )
+        self.in_conv = DoubleConv(depth_scale[0], depth_scale[0])
 
         self.down = nn.ModuleList()
         for i in range(len(depth_scale) - 1):
@@ -121,13 +142,19 @@ class DetectionModel(nn.Module):
             self.up.append(Up(depth_scale[i + 1], depth_scale[i], depth_scale[i]))
 
         n_masks = 1  # Output masks to generate
-        self.out_conv = nn.Sequential(
-            nn.Conv2d(depth_scale[0], n_masks, kernel_size=1),
-            nn.Sigmoid(),
+        out_upscale = nn.ConvTranspose2d(
+            depth_scale[0], n_masks, kernel_size=stem_factor, stride=stem_factor
         )
+        # Zero-initialize the output layer so that the model initially predicts
+        # 0.5 everywhere. With PyTorch's default initialization, the initial
+        # predictions are noisy and training can get stuck predicting a
+        # constant value, depending on the random seed.
+        nn.init.zeros_(out_upscale.weight)
+        nn.init.zeros_(out_upscale.bias)
+        self.out_conv = nn.Sequential(out_upscale, nn.Sigmoid())
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.in_conv(x)
+        x = self.in_conv(self.stem(x))
 
         x_down: list[torch.Tensor] = []
         for i, down_op in enumerate(self.down):

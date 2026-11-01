@@ -142,7 +142,9 @@ processes. On machines with few CPU cores, data loading may limit training
 speed.
 
 To fine-tune an existing model, pass the `--checkpoint` flag to specify the
-pre-trained model to start with.
+pre-trained model to start with. Note that checkpoints for the previous text
+detection model architecture, which operated at full input resolution, are not
+compatible with the current model.
 
 ### Export the text detection model
 
