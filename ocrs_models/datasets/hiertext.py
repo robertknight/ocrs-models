@@ -79,8 +79,8 @@ class HierText(SizedDataset):
 
         self.size = size
         self.augment = augment
-        self._augmentations = [
-            transforms.ColorJitter(brightness=0.1, contrast=0.1),
+        self._color_jitter = transforms.ColorJitter(brightness=0.1, contrast=0.1)
+        self._geometric_augmentations = [
             transforms.RandomAffine(degrees=5, scale=(0.8, 1.2), shear=5),
             transforms.RandomPerspective(distortion_scale=0.1, p=1.0),
         ]
@@ -94,8 +94,9 @@ class HierText(SizedDataset):
         """
         Apply a randomized augmentation to an image and its mask.
 
-        Half of images get one augmentation, which is applied to both the image
-        and mask.
+        Half of images get one augmentation. Geometric augmentations are applied
+        to both the image and mask. Photometric augmentations are applied to
+        the image only.
 
         :param img: CHW image, resized to `self.size`
         :param mask: CHW mask, resized to `self.size`
@@ -105,11 +106,17 @@ class HierText(SizedDataset):
         assert self.size is not None
 
         if random.random() < 0.5:
-            choice = random.randrange(len(self._augmentations) + 1)
-            if choice < len(self._augmentations):
+            choice = random.randrange(4)
+            if choice == 0:
+                # Shift the image into the [0, 1] range that ColorJitter
+                # expects.
+                img = self._color_jitter(img + 0.5) - 0.5
+            elif choice < 3:
                 # Transform image and mask in one call so that both use the
                 # same randomized parameters.
-                transformed = self._augmentations[choice](torch.stack([img, mask]))
+                transformed = self._geometric_augmentations[choice - 1](
+                    torch.stack([img, mask])
+                )
                 img, mask = transformed[0], transformed[1]
             else:
                 # Crop a 600x600 region of the original image, scaled to the
