@@ -137,6 +137,10 @@ GPU memory. The above value was used with a GPU that has 24 GB of memory. When
 training with an NVidia GPU, you can use the `nvidia-smi` tool to get memory
 usage statistics.
 
+Data loading and augmentation is CPU-intensive and uses up to 16 worker
+processes. On machines with few CPU cores, data loading may limit training
+speed.
+
 To fine-tune an existing model, pass the `--checkpoint` flag to specify the
 pre-trained model to start with.
 

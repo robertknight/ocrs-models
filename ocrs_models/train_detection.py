@@ -343,6 +343,9 @@ def main():
     else:
         validation_max_images = None
 
+    # Data loading and augmentation is CPU-intensive, so use multiple workers.
+    num_workers = min(16, os.cpu_count() or 1)
+
     transform = prepare_transform(mask_size, augment=args.augment)
 
     train_dataset = load_dataset(
@@ -353,7 +356,8 @@ def main():
         batch_size=batch_size,
         shuffle=True,
         pin_memory=True,
-        num_workers=2,
+        num_workers=num_workers,
+        persistent_workers=True,
         # Avoid a smaller final batch, which triggers recompilation of the
         # model and gives noisier BatchNorm statistics.
         drop_last=True,
@@ -368,7 +372,7 @@ def main():
         max_images=validation_max_images,
     )
     val_dataloader = DataLoader(
-        val_dataset, batch_size=batch_size, pin_memory=True, num_workers=2
+        val_dataset, batch_size=batch_size, pin_memory=True, num_workers=num_workers
     )
 
     print(
