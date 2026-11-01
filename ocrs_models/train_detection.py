@@ -354,6 +354,9 @@ def main():
         shuffle=True,
         pin_memory=True,
         num_workers=2,
+        # Avoid a smaller final batch, which triggers recompilation of the
+        # model and gives noisier BatchNorm statistics.
+        drop_last=True,
     )
 
     val_dataset = load_dataset(
