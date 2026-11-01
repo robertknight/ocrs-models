@@ -7,7 +7,7 @@ from typing import cast
 import torch
 from torchvision import transforms
 from torchvision.io import ImageReadMode, read_image, write_png
-from torchvision.transforms.functional import resize
+from torchvision.transforms.functional import gaussian_blur, resize
 from tqdm import tqdm
 
 from .util import (
@@ -79,10 +79,10 @@ class HierText(SizedDataset):
 
         self.size = size
         self.augment = augment
-        self._color_jitter = transforms.ColorJitter(brightness=0.1, contrast=0.1)
+        self._color_jitter = transforms.ColorJitter(brightness=0.3, contrast=0.3)
         self._geometric_augmentations = [
-            transforms.RandomAffine(degrees=5, scale=(0.8, 1.2), shear=5),
-            transforms.RandomPerspective(distortion_scale=0.1, p=1.0),
+            transforms.RandomAffine(degrees=5, scale=(0.7, 1.3), shear=5),
+            transforms.RandomPerspective(distortion_scale=0.15, p=1.0),
         ]
 
     def __len__(self):
@@ -92,11 +92,11 @@ class HierText(SizedDataset):
         self, img: torch.Tensor, mask: torch.Tensor, orig_height: int, orig_width: int
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
-        Apply a randomized augmentation to an image and its mask.
+        Apply randomized augmentations to an image and its mask.
 
-        Half of images get one augmentation. Geometric augmentations are applied
-        to both the image and mask. Photometric augmentations are applied to
-        the image only.
+        Most images get one geometric augmentation, which is applied to both the
+        image and mask. Photometric augmentations are then applied
+        independently, to the image only.
 
         :param img: CHW image, resized to `self.size`
         :param mask: CHW mask, resized to `self.size`
@@ -105,24 +105,21 @@ class HierText(SizedDataset):
         """
         assert self.size is not None
 
-        if random.random() < 0.5:
-            choice = random.randrange(4)
-            if choice == 0:
-                # Shift the image into the [0, 1] range that ColorJitter
-                # expects.
-                img = self._color_jitter(img + 0.5) - 0.5
-            elif choice < 3:
+        if random.random() < 0.7:
+            choice = random.randrange(3)
+            if choice < 2:
                 # Transform image and mask in one call so that both use the
                 # same randomized parameters.
-                transformed = self._geometric_augmentations[choice - 1](
+                transformed = self._geometric_augmentations[choice](
                     torch.stack([img, mask])
                 )
                 img, mask = transformed[0], transformed[1]
             else:
-                # Crop a 600x600 region of the original image, scaled to the
-                # resized image's coordinates, then resize back to `self.size`.
+                # Crop a random-sized square region of the original image,
+                # scaled to the resized image's coordinates, then resize back
+                # to `self.size`.
                 height, width = self.size
-                crop_size = 600
+                crop_size = random.uniform(400, 1000)
                 crop = transforms.RandomCrop(
                     size=(
                         min(round(crop_size * height / orig_height), 2 * height),
@@ -134,6 +131,21 @@ class HierText(SizedDataset):
                     crop(torch.stack([img, mask])), list(self.size), antialias=False
                 )
                 img, mask = cropped[0], cropped[1]
+
+        # Shift the image into the [0, 1] range that ColorJitter and the other
+        # photometric augmentations expect.
+        img = img + 0.5
+        if random.random() < 0.8:
+            img = self._color_jitter(img)
+        if random.random() < 0.2:
+            img = gaussian_blur(img, kernel_size=5, sigma=random.uniform(0.3, 1.5))
+        if random.random() < 0.2:
+            noise_std = random.uniform(0.01, 0.05)
+            img = (img + torch.randn_like(img) * noise_std).clamp(0.0, 1.0)
+        if random.random() < 0.2:
+            # Invert, to simulate light text on a dark background.
+            img = 1.0 - img
+        img = img - 0.5
 
         return img, mask
 
